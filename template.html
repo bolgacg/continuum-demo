@@ -245,7 +245,8 @@
     <li>Both controllers see exactly the same thing: four marker pixels from one fixed camera. Neither reads simulator state.</li>
     <li>The two robots are identical simulator instances with the same random seed, so the side-by-side comparison is fair.</li>
     <li>The "truth" simulator is phenomenological: constant curvature plus actuator lag, tendon backlash, gravity droop, inter-segment coupling and optional tendon drift. It is not rod mechanics, and nothing here claims to be.</li>
-    <li>The learned controller imitates a training-time expert that could see the simulator's true Jacobian. At run time it has no such access. When its inputs leave the training envelope it says so and lowers its gain instead of pretending.</li>
+    <li>The learned controller imitates a training-time expert that could see the simulator's true Jacobian. At run time it has no such access. When a request leaves the training envelope it says so and lowers its gain instead of pretending.</li>
+    <li>The dashed outline in each camera view is the convex hull of the targets used in training, which is close to the reachable set. Click outside it and the learned controller flags the request; the classical one has no concept of an envelope and just runs.</li>
     <li>This page is the whole system: simulator, controllers and pretrained weights in one file. Training and evaluation scripts are in the repository.</li>
   </ul>
 

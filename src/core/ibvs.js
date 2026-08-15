@@ -30,8 +30,9 @@
     return J;
   }
 
-  // v = -gain * J^T (J J^T + mu I)^-1 e   (damped least squares, J is 2x4)
-  function dlsVelocity(J, e, gain) {
+  // Damped pseudo-inverse of a 2x4 Jacobian: P = J^T (J J^T + mu I)^-1,
+  // returned as a 4x2 row-major array.
+  function dampedPinv(J) {
     const a = J[0], b = J[1];
     let aa = 0, ab = 0, bb = 0;
     for (let i = 0; i < 4; i++) {
@@ -42,11 +43,21 @@
     const mu = DAMP_FRAC * (aa + bb) / 2 + 1e-6;
     const m00 = aa + mu, m01 = ab, m11 = bb + mu;
     const det = m00 * m11 - m01 * m01;
-    // y = (J J^T + mu I)^-1 e
-    const y0 = (m11 * e[0] - m01 * e[1]) / det;
-    const y1 = (-m01 * e[0] + m00 * e[1]) / det;
+    // inv(JJ^T + mu I) = [i00 i01; i01 i11]
+    const i00 = m11 / det, i01 = -m01 / det, i11 = m00 / det;
+    const P = new Array(8);
+    for (let i = 0; i < 4; i++) {
+      P[2 * i] = a[i] * i00 + b[i] * i01;
+      P[2 * i + 1] = a[i] * i01 + b[i] * i11;
+    }
+    return P;
+  }
+
+  // v = -gain * P e   (damped least squares descent on the image error)
+  function dlsVelocity(J, e, gain) {
+    const P = dampedPinv(J);
     const v = new Array(4);
-    for (let i = 0; i < 4; i++) v[i] = -gain * (a[i] * y0 + b[i] * y1);
+    for (let i = 0; i < 4; i++) v[i] = -gain * (P[2 * i] * e[0] + P[2 * i + 1] * e[1]);
     return v;
   }
 
@@ -77,5 +88,5 @@
     };
   }
 
-  CR.ibvs = { GAIN, RATE_MAX, idealJacobianPx, dlsVelocity, clampRate, createClassical };
+  CR.ibvs = { GAIN, RATE_MAX, idealJacobianPx, dampedPinv, dlsVelocity, clampRate, createClassical };
 })(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));

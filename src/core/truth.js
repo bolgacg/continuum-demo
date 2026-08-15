@@ -18,13 +18,13 @@
     tendonRadius: 0.05,      // tendon routing radius (normalized units)
     lagTau: 0.09,            // actuator first-order lag, seconds
     rateMaxK: 4.0,           // actuator rate limit, curvature units / s
-    backlashK: 0.05,         // backlash half-width, curvature-equivalent
-    coupling: 0.08,          // fraction of seg1 curvature leaking into seg2
+    backlashK: 0.035,        // backlash half-width, curvature-equivalent
+    coupling: 0.12,          // fraction of seg1 curvature leaking into seg2
     droopSelf: [0.05, 0.03], // always-on gravity sag per segment
-    droopLoad: [0.42, 0.26], // extra sag per unit payload
-    driftWalkK: 0.10,        // drift random walk, curvature-equiv / sqrt(s)
-    driftCreepK: 0.045,      // drift creep, curvature-equiv / s
-    driftMaxK: 0.45,         // drift bias cap, curvature-equivalent
+    droopLoad: [0.52, 0.32], // extra sag per unit payload
+    driftWalkK: 0.035,       // drift random walk, curvature-equiv / sqrt(s)
+    driftCreepK: 0.025,      // drift creep, curvature-equiv / s
+    driftMaxK: 0.30,         // drift bias cap, curvature-equivalent
   };
 
   const NSEG = pcc.NSEG;

@@ -127,8 +127,9 @@
       if (last.errL != null) {
         ctx.fillStyle = LEARNED;
         const yl = yPx(last.errL);
-        const yc = last.errC != null ? yPx(last.errC) : -99;
-        const y = Math.abs(yl - yc) < 12 ? yl + (yl >= yc ? 12 : -12) : yl;
+        const yc = last.errC != null ? yPx(last.errC) : -999;
+        const gap = yl - yc;
+        const y = Math.abs(gap) < 15 ? yc + (gap >= 0 ? 15 : -15) : yl;
         ctx.fillText('learned', Math.min(xs.px(last.t) + 5, W - 60), y + 3);
       }
 

@@ -69,7 +69,8 @@ function check(name, cond, detail) {
   sim2.setCommand([1.0, 0, 0, 0]);
   for (let i = 0; i < 240; i++) sim2.step(1 / 60);
   const k1 = sim2.qEff()[0];
-  sim2.setCommand([1.0 - 0.03, 0, 0, 0]); // well inside the 0.05 deadband
+  const rev = 0.6 * CR.truth.PARAMS.backlashK; // well inside the deadband
+  sim2.setCommand([1.0 - rev, 0, 0, 0]);
   for (let i = 0; i < 240; i++) sim2.step(1 / 60);
   const k2 = sim2.qEff()[0];
   check('backlash deadband absorbs small reversal', Math.abs(k1 - k2) < 1e-6,

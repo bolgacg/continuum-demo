@@ -15,7 +15,8 @@
   const $ = (id) => document.getElementById(id);
   const cam = camera.defaultCamera(W, H);
 
-  // ---- reachable-set outline (ideal model), for the dashed HUD polygon ----
+  // ---- fallback outline (ideal-model reachable set) for the dashed HUD
+  // polygon; when weights are embedded the training-target hull wins ----
   function computeHull() {
     const rng = CR.makeRng(7);
     const pts = [];
@@ -42,12 +43,12 @@
     }
     return lower.slice(0, -1).concat(upper.slice(0, -1));
   }
-  const hull = computeHull();
-  const hullCentroid = hull.reduce((a, p) => [a[0] + p[0] / hull.length, a[1] + p[1] / hull.length], [0, 0]);
-
   // ---- views ----
   const weights = typeof CR_WEIGHTS !== 'undefined' ? CR_WEIGHTS : null;
   const learnedCtrl = learned.createLearned(weights);
+
+  const hull = learnedCtrl ? learnedCtrl.targetHull : computeHull();
+  const hullCentroid = hull.reduce((a, p) => [a[0] + p[0] / hull.length, a[1] + p[1] / hull.length], [0, 0]);
 
   const views = {
     classical: {
@@ -89,11 +90,12 @@
   let demo = null; // {steps, idx, tStart}
   let hadClick = false;
 
-  function condString() {
+  function condString(px) {
     const c = [];
     if (payloadTarget > 0) c.push('payload');
     if (driftOn) c.push('drift');
-    return c.length ? c.join('+') : 'nominal';
+    if (px && !inHull(px)) c.push('ood target');
+    return c.length ? c.join(' + ') : 'nominal';
   }
 
   function startTrial(px) {
@@ -101,7 +103,7 @@
     trial = {
       id: ++trialCount,
       t0: t,
-      cond: condString(),
+      cond: condString(px),
       per: {
         classical: { bandEnter: null, settle: null, tail: [] },
         learned: { bandEnter: null, settle: null, tail: [] },
@@ -312,17 +314,32 @@
     c: [1.6, 0.15, 0.2, -0.5],
     d: [0.8, -0.5, 0.9, 0.6],
   };
+  function inHull(p) {
+    let inside = false;
+    for (let i = 0, j = hull.length - 1; i < hull.length; j = i++) {
+      const a = hull[i], b = hull[j];
+      if ((a[1] > p[1]) !== (b[1] > p[1]) &&
+          p[0] < ((b[0] - a[0]) * (p[1] - a[1])) / (b[1] - a[1]) + a[0]) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
   function oodTarget() {
-    // a pixel well outside the reachable outline: push a hull vertex out from
-    // the centroid by 40%
+    // a visible pixel outside the training envelope: try the frame corners,
+    // else push a hull vertex outward and clamp into the frame
+    for (const c of [[30, 30], [W - 30, 30], [30, H - 30], [W - 30, H - 30]]) {
+      if (!inHull(c)) return c;
+    }
     let best = hull[0], bd = 0;
     for (const p of hull) {
       const d = Math.hypot(p[0] - hullCentroid[0], p[1] - hullCentroid[1]);
       if (d > bd) { bd = d; best = p; }
     }
     return [
-      hullCentroid[0] + (best[0] - hullCentroid[0]) * 1.4,
-      hullCentroid[1] + (best[1] - hullCentroid[1]) * 1.4,
+      Math.min(W - 20, Math.max(20, hullCentroid[0] + (best[0] - hullCentroid[0]) * 1.4)),
+      Math.min(H - 20, Math.max(20, hullCentroid[1] + (best[1] - hullCentroid[1]) * 1.4)),
     ];
   }
 
