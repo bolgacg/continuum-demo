@@ -119,7 +119,8 @@
     padding: 6px 9px; border-radius: 6px; white-space: pre; line-height: 1.5;
   }
 
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 13px; }
   th {
     text-align: left; font-weight: 600; font-size: 11.5px; letter-spacing: 0.05em;
     text-transform: uppercase; color: var(--muted); padding: 6px 10px;
@@ -226,6 +227,7 @@
   <div class="panel">
     <div class="panel-title">Trials</div>
     <div class="panel-sub">One row per clicked target, 6 s window. Settle: first time the error stays under 6 px for 0.8 s. Steady state: mean error over the final second.</div>
+    <div class="table-scroll">
     <table>
       <thead>
         <tr>
@@ -238,6 +240,7 @@
         <tr id="empty-row"><td colspan="6">No trials yet. Click a target above.</td></tr>
       </tbody>
     </table>
+    </div>
   </div>
 
   <h2>What this is, and is not</h2>
