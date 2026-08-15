@@ -35,10 +35,10 @@
   // slightly above, looking at the middle of the workspace.
   function defaultCamera(w, h) {
     return makeCamera({
-      pos: [2.15, 0.85, 0.35],
-      target: [0.0, -0.1, 1.0],
+      pos: [2.9, 1.1, 0.5],
+      target: [0.1, -0.05, 0.9],
       up: [0, 1, 0],
-      f: 0.95 * w,
+      f: 0.78 * w,
       w, h,
     });
   }

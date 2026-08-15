@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Continuum robot visual servoing, two ways</title>
+<style>
+  :root {
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --hairline: #e1e0d9;
+    --border: rgba(11, 11, 11, 0.10);
+    --classical: #eb6834;      /* series slot 2, light */
+    --learned: #2a78d6;        /* series slot 1, light */
+    --feed: #151614;           /* camera feed surface */
+    --feed-ink: #8a8f88;
+    --classical-feed: #d95926; /* series steps for the dark feed */
+    --learned-feed: #3987e5;
+    --warning: #fab219;
+    --good: #0ca30c;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { color-scheme: light; }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 984px; margin: 0 auto; padding: 40px 20px 56px; }
+
+  /* header */
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+  }
+  h1 { font-size: 27px; font-weight: 650; letter-spacing: -0.015em; margin-bottom: 12px; }
+  .intro { max-width: 760px; color: var(--ink-2); }
+  .intro b { color: var(--ink); font-weight: 600; }
+
+  h2 {
+    font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-2); margin: 36px 0 12px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  h2::after { content: ""; flex: 1; height: 1px; background: var(--hairline); }
+
+  /* camera feeds */
+  .feeds { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px; }
+  .feed-card { min-width: 0; }
+  .feed-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+  .feed-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; position: relative; top: 0px; }
+  .feed-title { font-weight: 600; font-size: 14.5px; }
+  .feed-sub { color: var(--muted); font-size: 12.5px; }
+  .feed-frame {
+    position: relative; border-radius: 10px; overflow: hidden;
+    background: var(--feed); border: 1px solid var(--border);
+  }
+  .feed-frame canvas { display: block; width: 100%; height: auto; cursor: crosshair; }
+  .readouts {
+    display: flex; gap: 18px; padding: 8px 2px 0; font-family: var(--mono);
+    font-size: 12px; color: var(--ink-2); flex-wrap: wrap;
+  }
+  .readouts .val { color: var(--ink); }
+  .readouts .lbl { color: var(--muted); }
+
+  /* controls */
+  .controls {
+    display: flex; align-items: center; gap: 22px; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 16px; margin-top: 20px;
+  }
+  .hint { color: var(--ink-2); font-size: 13.5px; margin-right: auto; }
+  .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: 13.5px; }
+  .switch input { position: absolute; opacity: 0; pointer-events: none; }
+  .knob {
+    width: 34px; height: 20px; border-radius: 10px; background: var(--hairline);
+    position: relative; transition: background 0.15s; flex: none;
+  }
+  .knob::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px;
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+    transition: left 0.15s;
+  }
+  .switch input:checked + .knob { background: var(--ink-2); }
+  .switch input:checked + .knob::after { left: 17px; }
+  .switch input:focus-visible + .knob { outline: 2px solid var(--learned); outline-offset: 2px; }
+  button {
+    font: 600 13.5px/1 system-ui, sans-serif; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--ink-2); border-radius: 8px;
+    padding: 9px 14px; cursor: pointer;
+  }
+  button:hover { background: #f0efec; }
+  button:focus-visible { outline: 2px solid var(--learned); outline-offset: 2px; }
+  button.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+  button.primary:hover { background: #2a2a28; }
+  .demo-note {
+    font-family: var(--mono); font-size: 12.5px; color: var(--ink-2);
+    padding: 8px 2px 0; min-height: 26px;
+  }
+
+  /* validation */
+  .panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 16px 10px; position: relative;
+  }
+  .panel + .panel { margin-top: 14px; }
+  .panel-title { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+  .panel-sub { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .legend { position: absolute; top: 16px; right: 16px; display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); }
+  .legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 5px; position: relative; top: -2px; }
+  .panel canvas { display: block; width: 100%; height: auto; }
+  #tooltip {
+    position: fixed; pointer-events: none; z-index: 10; display: none;
+    background: var(--ink); color: #fff; font-family: var(--mono); font-size: 11.5px;
+    padding: 6px 9px; border-radius: 6px; white-space: pre; line-height: 1.5;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left; font-weight: 600; font-size: 11.5px; letter-spacing: 0.05em;
+    text-transform: uppercase; color: var(--muted); padding: 6px 10px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  td { padding: 6px 10px; border-bottom: 1px solid var(--hairline); font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
+  td:first-child, th:first-child { padding-left: 2px; }
+  tr:last-child td { border-bottom: none; }
+  td .cond { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .col-c { color: var(--classical); font-weight: 600; }
+  .col-l { color: var(--learned); font-weight: 600; }
+  #empty-row td { color: var(--muted); font-family: system-ui, sans-serif; font-size: 13px; }
+
+  /* notes */
+  .notes { max-width: 780px; color: var(--ink-2); font-size: 14px; }
+  .notes li { margin: 7px 0 7px 18px; }
+  footer {
+    margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--hairline);
+    color: var(--muted); font-size: 12.5px; display: flex; gap: 16px; flex-wrap: wrap;
+  }
+  @media (max-width: 780px) {
+    .feeds { grid-template-columns: 1fr; }
+    .legend { position: static; margin-bottom: 8px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .knob, .knob::after { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">simulation study · single file · no libraries</div>
+    <h1>Continuum robot visual servoing, two ways</h1>
+    <p class="intro">
+      A two-segment tendon-driven continuum robot chases clicked targets using nothing but
+      marker pixels from one fixed camera. The left controller uses the textbook constant
+      curvature model. The right one learned from the simulator's less polite physics
+      (backlash, sag, drift) and <b>reports its own uncertainty</b>. Built over a weekend as a
+      study of the problems in the SDU Robotics job ad on sensing and AI-based control of
+      continuum surgical robots. It is a toy, and the gap between the idealized model and the
+      simulated truth is the point.
+    </p>
+  </header>
+
+  <div class="feeds">
+    <div class="feed-card">
+      <div class="feed-head">
+        <span class="feed-dot" style="background:var(--classical)"></span>
+        <span class="feed-title">Classical IBVS</span>
+        <span class="feed-sub">Jacobian from the ideal PCC model</span>
+      </div>
+      <div class="feed-frame"><canvas id="feed-classical" width="460" height="345"></canvas></div>
+      <div class="readouts">
+        <span><span class="lbl">error</span> <span class="val" id="ro-c-err">–</span></span>
+        <span><span class="lbl">settle</span> <span class="val" id="ro-c-settle">–</span></span>
+        <span><span class="lbl">state</span> <span class="val" id="ro-c-state">idle</span></span>
+      </div>
+    </div>
+    <div class="feed-card">
+      <div class="feed-head">
+        <span class="feed-dot" style="background:var(--learned)"></span>
+        <span class="feed-title">Learned ensemble</span>
+        <span class="feed-sub">5 small networks, disagreement shown live</span>
+      </div>
+      <div class="feed-frame"><canvas id="feed-learned" width="460" height="345"></canvas></div>
+      <div class="readouts">
+        <span><span class="lbl">error</span> <span class="val" id="ro-l-err">–</span></span>
+        <span><span class="lbl">settle</span> <span class="val" id="ro-l-settle">–</span></span>
+        <span><span class="lbl">ensemble σ</span> <span class="val" id="ro-l-sigma">–</span></span>
+        <span><span class="lbl">state</span> <span class="val" id="ro-l-state">idle</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <span class="hint">Click either camera view to set a shared target.</span>
+    <label class="switch"><input type="checkbox" id="tgl-payload"><span class="knob"></span>Payload</label>
+    <label class="switch"><input type="checkbox" id="tgl-drift"><span class="knob"></span>Tendon drift</label>
+    <button id="btn-reset">Reset</button>
+    <button id="btn-demo" class="primary">Run scripted demo</button>
+  </div>
+  <div class="demo-note" id="demo-note"></div>
+
+  <h2>Validation</h2>
+
+  <div class="panel">
+    <div class="panel-title">Tip pixel error over time</div>
+    <div class="panel-sub">Distance from tip marker to target, both controllers, same targets and disturbances. Hairline: 6 px settle band.</div>
+    <div class="legend">
+      <span><i style="background:var(--classical)"></i>classical</span>
+      <span><i style="background:var(--learned)"></i>learned</span>
+    </div>
+    <canvas id="chart-err" width="944" height="200"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Ensemble disagreement</div>
+    <div class="panel-sub">Spread of the five networks' commands. Shaded spans: outside the training envelope, gain reduced.</div>
+    <canvas id="chart-sigma" width="944" height="80"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Trials</div>
+    <div class="panel-sub">One row per clicked target, 6 s window. Settle: first time the error stays under 6 px for 0.8 s. Steady state: mean error over the final second.</div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>Condition</th>
+          <th class="col-c">classical settle</th><th class="col-c">steady state</th>
+          <th class="col-l">learned settle</th><th class="col-l">steady state</th>
+        </tr>
+      </thead>
+      <tbody id="trial-rows">
+        <tr id="empty-row"><td colspan="6">No trials yet. Click a target above.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>What this is, and is not</h2>
+  <ul class="notes">
+    <li>Both controllers see exactly the same thing: four marker pixels from one fixed camera. Neither reads simulator state.</li>
+    <li>The two robots are identical simulator instances with the same random seed, so the side-by-side comparison is fair.</li>
+    <li>The "truth" simulator is phenomenological: constant curvature plus actuator lag, tendon backlash, gravity droop, inter-segment coupling and optional tendon drift. It is not rod mechanics, and nothing here claims to be.</li>
+    <li>The learned controller imitates a training-time expert that could see the simulator's true Jacobian. At run time it has no such access. When its inputs leave the training envelope it says so and lowers its gain instead of pretending.</li>
+    <li>This page is the whole system: simulator, controllers and pretrained weights in one file. Training and evaluation scripts are in the repository.</li>
+  </ul>
+
+  <footer>
+    <span>Bolgaç Gülen · August 2026</span>
+    <span>Simulation only. No hardware, no clinical anything.</span>
+    <span id="fps"></span>
+  </footer>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+/*__WEIGHTS__*/
+</script>
+<script>
+/*__CORE__*/
+</script>
+<script>
+/*__UI__*/
+</script>
+</body>
+</html>

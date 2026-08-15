@@ -1,0 +1,1777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Continuum robot visual servoing, two ways</title>
+<style>
+  :root {
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --hairline: #e1e0d9;
+    --border: rgba(11, 11, 11, 0.10);
+    --classical: #eb6834;      /* series slot 2, light */
+    --learned: #2a78d6;        /* series slot 1, light */
+    --feed: #151614;           /* camera feed surface */
+    --feed-ink: #8a8f88;
+    --classical-feed: #d95926; /* series steps for the dark feed */
+    --learned-feed: #3987e5;
+    --warning: #fab219;
+    --good: #0ca30c;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { color-scheme: light; }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 984px; margin: 0 auto; padding: 40px 20px 56px; }
+
+  /* header */
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+  }
+  h1 { font-size: 27px; font-weight: 650; letter-spacing: -0.015em; margin-bottom: 12px; }
+  .intro { max-width: 760px; color: var(--ink-2); }
+  .intro b { color: var(--ink); font-weight: 600; }
+
+  h2 {
+    font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-2); margin: 36px 0 12px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  h2::after { content: ""; flex: 1; height: 1px; background: var(--hairline); }
+
+  /* camera feeds */
+  .feeds { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px; }
+  .feed-card { min-width: 0; }
+  .feed-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+  .feed-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; position: relative; top: 0px; }
+  .feed-title { font-weight: 600; font-size: 14.5px; }
+  .feed-sub { color: var(--muted); font-size: 12.5px; }
+  .feed-frame {
+    position: relative; border-radius: 10px; overflow: hidden;
+    background: var(--feed); border: 1px solid var(--border);
+  }
+  .feed-frame canvas { display: block; width: 100%; height: auto; cursor: crosshair; }
+  .readouts {
+    display: flex; gap: 18px; padding: 8px 2px 0; font-family: var(--mono);
+    font-size: 12px; color: var(--ink-2); flex-wrap: wrap;
+  }
+  .readouts .val { color: var(--ink); }
+  .readouts .lbl { color: var(--muted); }
+
+  /* controls */
+  .controls {
+    display: flex; align-items: center; gap: 22px; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 16px; margin-top: 20px;
+  }
+  .hint { color: var(--ink-2); font-size: 13.5px; margin-right: auto; }
+  .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: 13.5px; }
+  .switch input { position: absolute; opacity: 0; pointer-events: none; }
+  .knob {
+    width: 34px; height: 20px; border-radius: 10px; background: var(--hairline);
+    position: relative; transition: background 0.15s; flex: none;
+  }
+  .knob::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px;
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+    transition: left 0.15s;
+  }
+  .switch input:checked + .knob { background: var(--ink-2); }
+  .switch input:checked + .knob::after { left: 17px; }
+  .switch input:focus-visible + .knob { outline: 2px solid var(--learned); outline-offset: 2px; }
+  button {
+    font: 600 13.5px/1 system-ui, sans-serif; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--ink-2); border-radius: 8px;
+    padding: 9px 14px; cursor: pointer;
+  }
+  button:hover { background: #f0efec; }
+  button:focus-visible { outline: 2px solid var(--learned); outline-offset: 2px; }
+  button.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
+  button.primary:hover { background: #2a2a28; }
+  .demo-note {
+    font-family: var(--mono); font-size: 12.5px; color: var(--ink-2);
+    padding: 8px 2px 0; min-height: 26px;
+  }
+
+  /* validation */
+  .panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 16px 10px; position: relative;
+  }
+  .panel + .panel { margin-top: 14px; }
+  .panel-title { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+  .panel-sub { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+  .legend { position: absolute; top: 16px; right: 16px; display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); }
+  .legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 5px; position: relative; top: -2px; }
+  .panel canvas { display: block; width: 100%; height: auto; }
+  #tooltip {
+    position: fixed; pointer-events: none; z-index: 10; display: none;
+    background: var(--ink); color: #fff; font-family: var(--mono); font-size: 11.5px;
+    padding: 6px 9px; border-radius: 6px; white-space: pre; line-height: 1.5;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left; font-weight: 600; font-size: 11.5px; letter-spacing: 0.05em;
+    text-transform: uppercase; color: var(--muted); padding: 6px 10px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  td { padding: 6px 10px; border-bottom: 1px solid var(--hairline); font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
+  td:first-child, th:first-child { padding-left: 2px; }
+  tr:last-child td { border-bottom: none; }
+  td .cond { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .col-c { color: var(--classical); font-weight: 600; }
+  .col-l { color: var(--learned); font-weight: 600; }
+  #empty-row td { color: var(--muted); font-family: system-ui, sans-serif; font-size: 13px; }
+
+  /* notes */
+  .notes { max-width: 780px; color: var(--ink-2); font-size: 14px; }
+  .notes li { margin: 7px 0 7px 18px; }
+  footer {
+    margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--hairline);
+    color: var(--muted); font-size: 12.5px; display: flex; gap: 16px; flex-wrap: wrap;
+  }
+  @media (max-width: 780px) {
+    .feeds { grid-template-columns: 1fr; }
+    .legend { position: static; margin-bottom: 8px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .knob, .knob::after { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">simulation study · single file · no libraries</div>
+    <h1>Continuum robot visual servoing, two ways</h1>
+    <p class="intro">
+      A two-segment tendon-driven continuum robot chases clicked targets using nothing but
+      marker pixels from one fixed camera. The left controller uses the textbook constant
+      curvature model. The right one learned from the simulator's less polite physics
+      (backlash, sag, drift) and <b>reports its own uncertainty</b>. Built over a weekend as a
+      study of the problems in the SDU Robotics job ad on sensing and AI-based control of
+      continuum surgical robots. It is a toy, and the gap between the idealized model and the
+      simulated truth is the point.
+    </p>
+  </header>
+
+  <div class="feeds">
+    <div class="feed-card">
+      <div class="feed-head">
+        <span class="feed-dot" style="background:var(--classical)"></span>
+        <span class="feed-title">Classical IBVS</span>
+        <span class="feed-sub">Jacobian from the ideal PCC model</span>
+      </div>
+      <div class="feed-frame"><canvas id="feed-classical" width="460" height="345"></canvas></div>
+      <div class="readouts">
+        <span><span class="lbl">error</span> <span class="val" id="ro-c-err">–</span></span>
+        <span><span class="lbl">settle</span> <span class="val" id="ro-c-settle">–</span></span>
+        <span><span class="lbl">state</span> <span class="val" id="ro-c-state">idle</span></span>
+      </div>
+    </div>
+    <div class="feed-card">
+      <div class="feed-head">
+        <span class="feed-dot" style="background:var(--learned)"></span>
+        <span class="feed-title">Learned ensemble</span>
+        <span class="feed-sub">5 small networks, disagreement shown live</span>
+      </div>
+      <div class="feed-frame"><canvas id="feed-learned" width="460" height="345"></canvas></div>
+      <div class="readouts">
+        <span><span class="lbl">error</span> <span class="val" id="ro-l-err">–</span></span>
+        <span><span class="lbl">settle</span> <span class="val" id="ro-l-settle">–</span></span>
+        <span><span class="lbl">ensemble σ</span> <span class="val" id="ro-l-sigma">–</span></span>
+        <span><span class="lbl">state</span> <span class="val" id="ro-l-state">idle</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <span class="hint">Click either camera view to set a shared target.</span>
+    <label class="switch"><input type="checkbox" id="tgl-payload"><span class="knob"></span>Payload</label>
+    <label class="switch"><input type="checkbox" id="tgl-drift"><span class="knob"></span>Tendon drift</label>
+    <button id="btn-reset">Reset</button>
+    <button id="btn-demo" class="primary">Run scripted demo</button>
+  </div>
+  <div class="demo-note" id="demo-note"></div>
+
+  <h2>Validation</h2>
+
+  <div class="panel">
+    <div class="panel-title">Tip pixel error over time</div>
+    <div class="panel-sub">Distance from tip marker to target, both controllers, same targets and disturbances. Hairline: 6 px settle band.</div>
+    <div class="legend">
+      <span><i style="background:var(--classical)"></i>classical</span>
+      <span><i style="background:var(--learned)"></i>learned</span>
+    </div>
+    <canvas id="chart-err" width="944" height="200"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Ensemble disagreement</div>
+    <div class="panel-sub">Spread of the five networks' commands. Shaded spans: outside the training envelope, gain reduced.</div>
+    <canvas id="chart-sigma" width="944" height="80"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Trials</div>
+    <div class="panel-sub">One row per clicked target, 6 s window. Settle: first time the error stays under 6 px for 0.8 s. Steady state: mean error over the final second.</div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>Condition</th>
+          <th class="col-c">classical settle</th><th class="col-c">steady state</th>
+          <th class="col-l">learned settle</th><th class="col-l">steady state</th>
+        </tr>
+      </thead>
+      <tbody id="trial-rows">
+        <tr id="empty-row"><td colspan="6">No trials yet. Click a target above.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>What this is, and is not</h2>
+  <ul class="notes">
+    <li>Both controllers see exactly the same thing: four marker pixels from one fixed camera. Neither reads simulator state.</li>
+    <li>The two robots are identical simulator instances with the same random seed, so the side-by-side comparison is fair.</li>
+    <li>The "truth" simulator is phenomenological: constant curvature plus actuator lag, tendon backlash, gravity droop, inter-segment coupling and optional tendon drift. It is not rod mechanics, and nothing here claims to be.</li>
+    <li>The learned controller imitates a training-time expert that could see the simulator's true Jacobian. At run time it has no such access. When its inputs leave the training envelope it says so and lowers its gain instead of pretending.</li>
+    <li>This page is the whole system: simulator, controllers and pretrained weights in one file. Training and evaluation scripts are in the repository.</li>
+  </ul>
+
+  <footer>
+    <span>Bolgaç Gülen · August 2026</span>
+    <span>Simulation only. No hardware, no clinical anything.</span>
+    <span id="fps"></span>
+  </footer>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+const CR_WEIGHTS = null;
+</script>
+<script>
+// ---- src/core/math3.js ----
+// Minimal 3D math: vectors as [x,y,z], 3x3 matrices as row-major arrays of 9.
+(function (CR) {
+  'use strict';
+
+  const v3 = {
+    add: (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]],
+    sub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
+    scale: (a, s) => [a[0] * s, a[1] * s, a[2] * s],
+    dot: (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
+    cross: (a, b) => [
+      a[1] * b[2] - a[2] * b[1],
+      a[2] * b[0] - a[0] * b[2],
+      a[0] * b[1] - a[1] * b[0],
+    ],
+    norm: (a) => Math.hypot(a[0], a[1], a[2]),
+    normalize(a) {
+      const n = Math.hypot(a[0], a[1], a[2]) || 1;
+      return [a[0] / n, a[1] / n, a[2] / n];
+    },
+  };
+
+  const m3 = {
+    ident: () => [1, 0, 0, 0, 1, 0, 0, 0, 1],
+    mul(a, b) {
+      const r = new Array(9);
+      for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+          r[3 * i + j] =
+            a[3 * i] * b[j] + a[3 * i + 1] * b[3 + j] + a[3 * i + 2] * b[6 + j];
+        }
+      }
+      return r;
+    },
+    mulVec: (m, v) => [
+      m[0] * v[0] + m[1] * v[1] + m[2] * v[2],
+      m[3] * v[0] + m[4] * v[1] + m[5] * v[2],
+      m[6] * v[0] + m[7] * v[1] + m[8] * v[2],
+    ],
+    rotY(t) {
+      const c = Math.cos(t), s = Math.sin(t);
+      return [c, 0, s, 0, 1, 0, -s, 0, c];
+    },
+    rotZ(t) {
+      const c = Math.cos(t), s = Math.sin(t);
+      return [c, -s, 0, s, c, 0, 0, 0, 1];
+    },
+  };
+
+  // Deterministic RNG (mulberry32) so runs are reproducible and the two
+  // side-by-side sims can share one disturbance realization.
+  function makeRng(seed) {
+    let a = seed >>> 0;
+    const next = function () {
+      a |= 0; a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    next.gauss = function () {
+      // Box-Muller
+      let u = 0, v = 0;
+      while (u === 0) u = next();
+      while (v === 0) v = next();
+      return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    };
+    return next;
+  }
+
+  CR.v3 = v3;
+  CR.m3 = m3;
+  CR.makeRng = makeRng;
+})(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));
+
+// ---- src/core/pcc.js ----
+// Piecewise constant curvature (PCC) kinematics for a 2-segment continuum robot.
+//
+// Configuration q = [kx1, ky1, kx2, ky2]: each segment bends with a curvature
+// vector (kx, ky); magnitude is the curvature, direction is the bending plane.
+// The robot's base frame has +z along the undeformed backbone (horizontal in
+// the world; gravity is -y). Units are normalized (segment lengths ~1); the
+// demo does not claim a physical scale.
+(function (CR) {
+  'use strict';
+  const { m3 } = CR;
+
+  const SEG_LEN = [1.0, 0.8];
+  const NSEG = 2;
+  const KMAX = [2.2, 2.6]; // max curvature magnitude per segment
+
+  // Pose (position + rotation) at arc length s along one segment with
+  // curvature vector (kx, ky), in the segment's base frame.
+  function segPose(kx, ky, s) {
+    const k = Math.hypot(kx, ky);
+    if (k < 1e-9) {
+      return { p: [0, 0, s], R: m3.ident() };
+    }
+    const phi = Math.atan2(ky, kx);
+    const th = k * s;
+    const a = (1 - Math.cos(th)) / k;
+    const b = Math.sin(th) / k;
+    const p = [Math.cos(phi) * a, Math.sin(phi) * a, b];
+    const R = m3.mul(m3.rotZ(phi), m3.mul(m3.rotY(th), m3.rotZ(-phi)));
+    return { p, R };
+  }
+
+  function composePose(base, local) {
+    return {
+      p: CR.v3.add(base.p, m3.mulVec(base.R, local.p)),
+      R: m3.mul(base.R, local.R),
+    };
+  }
+
+  // World-frame pose at arc length s (0..SEG_LEN[i]) along segment i.
+  function poseAt(q, seg, s) {
+    let pose = { p: [0, 0, 0], R: m3.ident() };
+    for (let i = 0; i < seg; i++) {
+      pose = composePose(pose, segPose(q[2 * i], q[2 * i + 1], SEG_LEN[i]));
+    }
+    return composePose(pose, segPose(q[2 * seg], q[2 * seg + 1], s));
+  }
+
+  function tip3(q) {
+    return poseAt(q, NSEG - 1, SEG_LEN[NSEG - 1]).p;
+  }
+
+  // Backbone sample points for rendering, base to tip.
+  function backbone(q, nPerSeg) {
+    const pts = [];
+    for (let i = 0; i < NSEG; i++) {
+      for (let j = 0; j <= nPerSeg; j++) {
+        pts.push(poseAt(q, i, (j / nPerSeg) * SEG_LEN[i]).p);
+      }
+    }
+    return pts;
+  }
+
+  // Marker positions: mid segment 1, end segment 1, mid segment 2, tip.
+  // These are the only "sensor readings" either controller gets (as pixels).
+  function markers3(q) {
+    return [
+      poseAt(q, 0, 0.5 * SEG_LEN[0]).p,
+      poseAt(q, 0, SEG_LEN[0]).p,
+      poseAt(q, 1, 0.5 * SEG_LEN[1]).p,
+      poseAt(q, 1, SEG_LEN[1]).p,
+    ];
+  }
+
+  function clampQ(q) {
+    const out = q.slice();
+    for (let i = 0; i < NSEG; i++) {
+      const kx = out[2 * i], ky = out[2 * i + 1];
+      const k = Math.hypot(kx, ky);
+      if (k > KMAX[i]) {
+        const f = KMAX[i] / k;
+        out[2 * i] = kx * f;
+        out[2 * i + 1] = ky * f;
+      }
+    }
+    return out;
+  }
+
+  CR.pcc = { SEG_LEN, NSEG, KMAX, NQ: 2 * NSEG, segPose, poseAt, tip3, backbone, markers3, clampQ };
+})(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));
+
+// ---- src/core/camera.js ----
+// Pinhole camera: fixed pose, perspective projection world -> pixels.
+(function (CR) {
+  'use strict';
+  const { v3, m3 } = CR;
+
+  function lookAtRotation(pos, target, up) {
+    // Camera frame: +z forward (into the scene), +x right, +y down (image v).
+    const fwd = v3.normalize(v3.sub(target, pos));
+    const right = v3.normalize(v3.cross(fwd, up));
+    const down = v3.cross(fwd, right);
+    // Rows of R map world vectors into camera coords.
+    return [
+      right[0], right[1], right[2],
+      down[0], down[1], down[2],
+      fwd[0], fwd[1], fwd[2],
+    ];
+  }
+
+  function makeCamera(opts) {
+    const { pos, target, up, f, w, h } = opts;
+    const R = lookAtRotation(pos, target, up);
+    return {
+      pos, f, w, h,
+      // Returns [u, v, zCam] or null if the point is behind the camera.
+      project(p) {
+        const d = v3.sub(p, pos);
+        const c = m3.mulVec(R, d);
+        if (c[2] < 1e-4) return null;
+        return [w / 2 + (f * c[0]) / c[2], h / 2 + (f * c[1]) / c[2], c[2]];
+      },
+    };
+  }
+
+  // The demo's fixed camera: off to the side of the horizontal robot,
+  // slightly above, looking at the middle of the workspace.
+  function defaultCamera(w, h) {
+    return makeCamera({
+      pos: [2.9, 1.1, 0.5],
+      target: [0.1, -0.05, 0.9],
+      up: [0, 1, 0],
+      f: 0.78 * w,
+      w, h,
+    });
+  }
+
+  CR.camera = { makeCamera, defaultCamera };
+})(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));
+
+// ---- src/core/truth.js ----
+// "Truth" simulator: PCC kinematics plus the effects the idealized model
+// ignores. This is a phenomenological model (not Cosserat rod mechanics);
+// its job is to be wrong relative to the ideal PCC model in ways that are
+// qualitatively realistic for tendon-driven continuum robots:
+//
+//   - actuator lag + rate limit on tendon displacements
+//   - tendon backlash (play operator) -> deadband hysteresis
+//   - load-dependent droop: curvature biased toward gravity, scaled by payload
+//   - inter-segment coupling: proximal tendons disturb the distal segment
+//   - optional slow tendon drift (creep + random walk)
+//
+// Controllers never read this state; they only see projected marker pixels.
+(function (CR) {
+  'use strict';
+  const { pcc, m3, makeRng } = CR;
+
+  const P = {
+    tendonRadius: 0.05,      // tendon routing radius (normalized units)
+    lagTau: 0.09,            // actuator first-order lag, seconds
+    rateMaxK: 4.0,           // actuator rate limit, curvature units / s
+    backlashK: 0.05,         // backlash half-width, curvature-equivalent
+    coupling: 0.08,          // fraction of seg1 curvature leaking into seg2
+    droopSelf: [0.05, 0.03], // always-on gravity sag per segment
+    droopLoad: [0.42, 0.26], // extra sag per unit payload
+    driftWalkK: 0.10,        // drift random walk, curvature-equiv / sqrt(s)
+    driftCreepK: 0.045,      // drift creep, curvature-equiv / s
+    driftMaxK: 0.45,         // drift bias cap, curvature-equivalent
+  };
+
+  const NSEG = pcc.NSEG;
+  const BETA = [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3];
+  const G_WORLD = [0, -1, 0];
+
+  // Curvature vector -> 3 tendon displacements for segment i (linear map).
+  function tendonsFromK(kx, ky, i) {
+    const rL = P.tendonRadius * pcc.SEG_LEN[i];
+    return BETA.map((b) => -rL * (kx * Math.cos(b) + ky * Math.sin(b)));
+  }
+
+  // Pseudo-inverse of the map above.
+  function kFromTendons(t, i) {
+    const rL = P.tendonRadius * pcc.SEG_LEN[i];
+    let cx = 0, cy = 0;
+    for (let j = 0; j < 3; j++) {
+      cx += t[j] * Math.cos(BETA[j]);
+      cy += t[j] * Math.sin(BETA[j]);
+    }
+    return [(-2 / (3 * rL)) * cx, (-2 / (3 * rL)) * cy];
+  }
+
+  // Static part of the truth model: base curvature per segment -> effective
+  // curvature after coupling and gravity droop. Droop is applied along the
+  // world gravity direction expressed in each segment's base frame, so a
+  // segment that has been bent around still sags toward the floor.
+  function applyStatic(qBase, payload) {
+    const k1 = [qBase[0], qBase[1]];
+    const k2 = [
+      qBase[2] + P.coupling * qBase[0],
+      qBase[3] + P.coupling * qBase[1],
+    ];
+    const d1 = P.droopSelf[0] + payload * P.droopLoad[0];
+    k1[1] += -d1; // segment 1 base frame is the world frame; gravity is -y
+
+    const q1 = [k1[0], k1[1], 0, 0];
+    const R1 = pcc.poseAt(q1, 0, pcc.SEG_LEN[0]).R;
+    // R1 maps local -> world; use its transpose to bring gravity into the
+    // segment-2 base frame, then bias curvature toward its x-y projection.
+    const gLoc = [
+      R1[0] * G_WORLD[0] + R1[3] * G_WORLD[1] + R1[6] * G_WORLD[2],
+      R1[1] * G_WORLD[0] + R1[4] * G_WORLD[1] + R1[7] * G_WORLD[2],
+    ];
+    const d2 = P.droopSelf[1] + payload * P.droopLoad[1];
+    k2[0] += d2 * gLoc[0];
+    k2[1] += d2 * gLoc[1];
+
+    return pcc.clampQ([k1[0], k1[1], k2[0], k2[1]]);
+  }
+
+  function createTruth(seed) {
+    const rng = makeRng(seed);
+    const sim = {
+      payload: 0,        // 0..1, ramped by the UI
+      driftOn: false,
+      qCmd: [0, 0, 0, 0],
+      target: new Array(6).fill(0), // tendon targets (2 segments x 3 tendons)
+      actual: new Array(6).fill(0), // after lag + rate limit
+      play: new Array(6).fill(0),   // after backlash
+      drift: new Array(6).fill(0),  // slow bias
+      qEffCache: [0, 0, 0, 0],
+      time: 0,
+    };
+
+    function updateTargets() {
+      for (let i = 0; i < NSEG; i++) {
+        const t = tendonsFromK(sim.qCmd[2 * i], sim.qCmd[2 * i + 1], i);
+        for (let j = 0; j < 3; j++) sim.target[3 * i + j] = t[j];
+      }
+    }
+
+    sim.setCommand = function (q) {
+      sim.qCmd = pcc.clampQ(q);
+      updateTargets();
+    };
+
+    sim.reset = function (q0) {
+      sim.qCmd = pcc.clampQ(q0 || [0, 0, 0, 0]);
+      updateTargets();
+      for (let j = 0; j < 6; j++) {
+        sim.actual[j] = sim.target[j];
+        sim.play[j] = sim.target[j];
+        sim.drift[j] = 0;
+      }
+      sim.time = 0;
+      sim.step(0);
+    };
+
+    sim.step = function (dt) {
+      sim.time += dt;
+      const alpha = dt > 0 ? dt / (P.lagTau + dt) : 0;
+      for (let i = 0; i < NSEG; i++) {
+        const rL = P.tendonRadius * pcc.SEG_LEN[i];
+        const rateMax = P.rateMaxK * rL * dt;
+        const bl = P.backlashK * rL;
+        for (let j = 0; j < 3; j++) {
+          const idx = 3 * i + j;
+          // first-order lag with rate limit
+          let da = alpha * (sim.target[idx] - sim.actual[idx]);
+          if (da > rateMax) da = rateMax;
+          if (da < -rateMax) da = -rateMax;
+          sim.actual[idx] += da;
+          // backlash: play operator with half-width bl
+          const gap = sim.actual[idx] - sim.play[idx];
+          if (gap > bl) sim.play[idx] = sim.actual[idx] - bl;
+          else if (gap < -bl) sim.play[idx] = sim.actual[idx] + bl;
+          // drift: creep in a fixed per-tendon direction + random walk
+          if (sim.driftOn && dt > 0) {
+            const dir = (i + j) % 2 === 0 ? 1 : -1;
+            let d = sim.drift[idx];
+            d += dir * P.driftCreepK * rL * dt;
+            d += P.driftWalkK * rL * Math.sqrt(dt) * rng.gauss();
+            const cap = P.driftMaxK * rL;
+            if (d > cap) d = cap;
+            if (d < -cap) d = -cap;
+            sim.drift[idx] = d;
+          }
+        }
+      }
+      // effective curvature from transmitted tendon displacements
+      const qBase = new Array(4);
+      for (let i = 0; i < NSEG; i++) {
+        const t = [0, 1, 2].map((j) => sim.play[3 * i + j] + sim.drift[3 * i + j]);
+        const k = kFromTendons(t, i);
+        qBase[2 * i] = k[0];
+        qBase[2 * i + 1] = k[1];
+      }
+      sim.qEffCache = applyStatic(qBase, sim.payload);
+      return sim.qEffCache;
+    };
+
+    sim.qEff = () => sim.qEffCache;
+    sim.markers3 = () => pcc.markers3(sim.qEffCache);
+    sim.backbone = (n) => pcc.backbone(sim.qEffCache, n);
+
+    sim.reset([0, 0, 0, 0]);
+    return sim;
+  }
+
+  // Privileged pixel Jacobian of tip wrt command, evaluated through the
+  // static truth map (coupling + droop) at the sim's current state. Used by
+  // the training-time expert and by nothing at demo runtime.
+  function truthJacobianPx(sim, cam) {
+    const h = 1e-3;
+    const J = [[0, 0, 0, 0], [0, 0, 0, 0]];
+    // Operating point: the transmitted curvature (after backlash + drift),
+    // not the raw command, so the linearization is taken where the plant
+    // actually is.
+    const qOp = new Array(4);
+    for (let i = 0; i < NSEG; i++) {
+      const t = [0, 1, 2].map((j) => sim.play[3 * i + j] + sim.drift[3 * i + j]);
+      const k = kFromTendons(t, i);
+      qOp[2 * i] = k[0];
+      qOp[2 * i + 1] = k[1];
+    }
+    for (let c = 0; c < 4; c++) {
+      const qp = qOp.slice(); qp[c] += h;
+      const qm = qOp.slice(); qm[c] -= h;
+      const pp = cam.project(pcc.tip3(applyStatic(qp, sim.payload)));
+      const pm = cam.project(pcc.tip3(applyStatic(qm, sim.payload)));
+      if (!pp || !pm) continue;
+      J[0][c] = (pp[0] - pm[0]) / (2 * h);
+      J[1][c] = (pp[1] - pm[1]) / (2 * h);
+    }
+    return J;
+  }
+
+  CR.truth = { PARAMS: P, createTruth, truthJacobianPx, applyStatic };
+})(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));
+
+// ---- src/core/ibvs.js ----
+// Classical image-based visual servoing with a model-based Jacobian.
+//
+// The controller keeps an internal belief of the configuration (the commands
+// it has integrated), computes the pixel Jacobian of the *idealized* PCC
+// model at that belief, and does damped-least-squares descent on the image
+// error. It never sees the truth sim's state: only the tip pixel from the
+// camera. The gap between its ideal model and the truth sim is exactly what
+// the demo is about.
+(function (CR) {
+  'use strict';
+  const { pcc } = CR;
+
+  const GAIN = 2.2;      // error feedback gain, 1/s
+  const RATE_MAX = 3.0;  // command rate clamp, curvature units / s
+  const DAMP_FRAC = 0.02;
+
+  // Pixel Jacobian of the ideal PCC tip wrt q, central differences.
+  function idealJacobianPx(q, cam) {
+    const h = 1e-3;
+    const J = [[0, 0, 0, 0], [0, 0, 0, 0]];
+    for (let c = 0; c < 4; c++) {
+      const qp = q.slice(); qp[c] += h;
+      const qm = q.slice(); qm[c] -= h;
+      const pp = cam.project(pcc.tip3(qp));
+      const pm = cam.project(pcc.tip3(qm));
+      if (!pp || !pm) continue;
+      J[0][c] = (pp[0] - pm[0]) / (2 * h);
+      J[1][c] = (pp[1] - pm[1]) / (2 * h);
+    }
+    return J;
+  }
+
+  // v = -gain * J^T (J J^T + mu I)^-1 e   (damped least squares, J is 2x4)
+  function dlsVelocity(J, e, gain) {
+    const a = J[0], b = J[1];
+    let aa = 0, ab = 0, bb = 0;
+    for (let i = 0; i < 4; i++) {
+      aa += a[i] * a[i];
+      ab += a[i] * b[i];
+      bb += b[i] * b[i];
+    }
+    const mu = DAMP_FRAC * (aa + bb) / 2 + 1e-6;
+    const m00 = aa + mu, m01 = ab, m11 = bb + mu;
+    const det = m00 * m11 - m01 * m01;
+    // y = (J J^T + mu I)^-1 e
+    const y0 = (m11 * e[0] - m01 * e[1]) / det;
+    const y1 = (-m01 * e[0] + m00 * e[1]) / det;
+    const v = new Array(4);
+    for (let i = 0; i < 4; i++) v[i] = -gain * (a[i] * y0 + b[i] * y1);
+    return v;
+  }
+
+  function clampRate(v, rateMax) {
+    const out = v.slice();
+    for (let i = 0; i < out.length; i++) {
+      if (out[i] > rateMax) out[i] = rateMax;
+      if (out[i] < -rateMax) out[i] = -rateMax;
+    }
+    return out;
+  }
+
+  function createClassical(cam) {
+    let qBelief = [0, 0, 0, 0];
+    return {
+      name: 'classical',
+      reset(q0) { qBelief = (q0 || [0, 0, 0, 0]).slice(); },
+      qBelief: () => qBelief.slice(),
+      // tipPx/targetPx: [u, v]. Returns the new absolute command.
+      step(tipPx, targetPx, dt) {
+        const e = [tipPx[0] - targetPx[0], tipPx[1] - targetPx[1]];
+        const J = idealJacobianPx(qBelief, cam);
+        const v = clampRate(dlsVelocity(J, e, GAIN), RATE_MAX);
+        for (let i = 0; i < 4; i++) qBelief[i] += v[i] * dt;
+        qBelief = pcc.clampQ(qBelief);
+        return qBelief.slice();
+      },
+    };
+  }
+
+  CR.ibvs = { GAIN, RATE_MAX, idealJacobianPx, dlsVelocity, clampRate, createClassical };
+})(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));
+
+// ---- src/core/features.js ----
+// Image-feature vector shared by the learned controller's training and
+// runtime. Inputs are pixels only: 4 marker positions + tip-to-target error,
+// normalized by image size. 10 numbers total.
+(function (CR) {
+  'use strict';
+
+  const DIM = 10;
+
+  function build(markersPx, targetPx, w, h) {
+    const x = new Array(DIM);
+    const sx = w / 2, sy = h / 2;
+    for (let i = 0; i < 4; i++) {
+      x[2 * i] = (markersPx[i][0] - sx) / sx;
+      x[2 * i + 1] = (markersPx[i][1] - sy) / sy;
+    }
+    const tip = markersPx[3];
+    x[8] = (tip[0] - targetPx[0]) / sx;
+    x[9] = (tip[1] - targetPx[1]) / sy;
+    return x;
+  }
+
+  CR.features = { DIM, build };
+})(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));
+
+// ---- src/core/mlp.js ----
+// Tiny fully-connected network: tanh hidden layers, linear output.
+// Plain arrays so weights serialize straight to JSON. Includes just enough
+// training machinery (backprop + Adam) for the offline training script.
+(function (CR) {
+  'use strict';
+
+  function create(sizes, rng) {
+    const layers = [];
+    for (let l = 0; l < sizes.length - 1; l++) {
+      const nIn = sizes[l], nOut = sizes[l + 1];
+      const scale = Math.sqrt(1 / nIn);
+      const W = new Array(nOut * nIn);
+      for (let i = 0; i < W.length; i++) W[i] = rng.gauss() * scale;
+      layers.push({ W, b: new Array(nOut).fill(0), nIn, nOut });
+    }
+    return { sizes: sizes.slice(), layers };
+  }
+
+  function forward(net, x) {
+    let a = x;
+    for (let l = 0; l < net.layers.length; l++) {
+      const { W, b, nIn, nOut } = net.layers[l];
+      const z = new Array(nOut);
+      for (let i = 0; i < nOut; i++) {
+        let s = b[i];
+        const row = i * nIn;
+        for (let j = 0; j < nIn; j++) s += W[row + j] * a[j];
+        z[i] = l < net.layers.length - 1 ? Math.tanh(s) : s;
+      }
+      a = z;
+    }
+    return a;
+  }
+
+  // Forward pass keeping activations, then backprop of 0.5*||y - t||^2.
+  // Accumulates into grads (same shape as net layers). Returns the loss.
+  function backprop(net, x, target, grads) {
+    const acts = [x];
+    let a = x;
+    for (let l = 0; l < net.layers.length; l++) {
+      const { W, b, nIn, nOut } = net.layers[l];
+      const z = new Array(nOut);
+      for (let i = 0; i < nOut; i++) {
+        let s = b[i];
+        const row = i * nIn;
+        for (let j = 0; j < nIn; j++) s += W[row + j] * a[j];
+        z[i] = l < net.layers.length - 1 ? Math.tanh(s) : s;
+      }
+      acts.push(z);
+      a = z;
+    }
+    const out = acts[acts.length - 1];
+    let loss = 0;
+    let delta = new Array(out.length);
+    for (let i = 0; i < out.length; i++) {
+      const d = out[i] - target[i];
+      loss += 0.5 * d * d;
+      delta[i] = d;
+    }
+    for (let l = net.layers.length - 1; l >= 0; l--) {
+      const { W, nIn, nOut } = net.layers[l];
+      const aPrev = acts[l];
+      const g = grads[l];
+      for (let i = 0; i < nOut; i++) {
+        const row = i * nIn;
+        g.b[i] += delta[i];
+        for (let j = 0; j < nIn; j++) g.W[row + j] += delta[i] * aPrev[j];
+      }
+      if (l > 0) {
+        const newDelta = new Array(nIn).fill(0);
+        for (let j = 0; j < nIn; j++) {
+          let s = 0;
+          for (let i = 0; i < nOut; i++) s += W[i * nIn + j] * delta[i];
+          const h = acts[l][j]; // tanh activation of layer l-1's output
+          newDelta[j] = s * (1 - h * h);
+        }
+        delta = newDelta;
+      }
+    }
+    return loss;
+  }
+
+  function zeroGrads(net) {
+    return net.layers.map((L) => ({
+      W: new Array(L.W.length).fill(0),
+      b: new Array(L.b.length).fill(0),
+    }));
+  }
+
+  function makeAdam(net, lr) {
+    const m = zeroGrads(net), v = zeroGrads(net);
+    let t = 0;
+    const b1 = 0.9, b2 = 0.999, eps = 1e-8;
+    return function step(grads, batchSize) {
+      t++;
+      const c1 = 1 - Math.pow(b1, t), c2 = 1 - Math.pow(b2, t);
+      for (let l = 0; l < net.layers.length; l++) {
+        const L = net.layers[l], g = grads[l], ml = m[l], vl = v[l];
+        for (let k = 0; k < L.W.length; k++) {
+          const gk = g.W[k] / batchSize;
+          ml.W[k] = b1 * ml.W[k] + (1 - b1) * gk;
+          vl.W[k] = b2 * vl.W[k] + (1 - b2) * gk * gk;
+          L.W[k] -= (lr * (ml.W[k] / c1)) / (Math.sqrt(vl.W[k] / c2) + eps);
+        }
+        for (let k = 0; k < L.b.length; k++) {
+          const gk = g.b[k] / batchSize;
+          ml.b[k] = b1 * ml.b[k] + (1 - b1) * gk;
+          vl.b[k] = b2 * vl.b[k] + (1 - b2) * gk * gk;
+          L.b[k] -= (lr * (ml.b[k] / c1)) / (Math.sqrt(vl.b[k] / c2) + eps);
+        }
+      }
+    };
+  }
+
+  CR.mlp = { create, forward, backprop, zeroGrads, makeAdam };
+})(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));
+
+// ---- src/core/learned.js ----
+// Learned controller runtime: an ensemble of small MLPs maps image features
+// (marker pixels + target error) to a curvature-rate command. The ensemble
+// gives two things the single network would not: a smoother mean command and
+// an honest disagreement signal. When the input leaves the training envelope
+// or the members disagree too much, the controller flags OOD and scales its
+// gain down rather than extrapolating at full authority.
+(function (CR) {
+  'use strict';
+  const { pcc, mlp, features, ibvs } = CR;
+
+  const OOD_GAIN = 0.3;      // authority multiplier while flagged OOD
+  const ENVELOPE_MARGIN = 0.10; // fraction of the per-dim training range
+
+  function createLearned(blob) {
+    if (!blob || !blob.members || !blob.members.length) return null;
+    const { inputMean, inputStd, inputMin, inputMax, sigmaWarn } = blob;
+    let qCmd = [0, 0, 0, 0];
+
+    function memberVelocities(x) {
+      const xn = x.map((v, i) => (v - inputMean[i]) / inputStd[i]);
+      return blob.members.map((net) => mlp.forward(net, xn));
+    }
+
+    return {
+      name: 'learned',
+      sigmaWarn,
+      reset(q0) { qCmd = (q0 || [0, 0, 0, 0]).slice(); },
+      qCmd: () => qCmd.slice(),
+      step(markersPx, targetPx, dt, w, h) {
+        const x = features.build(markersPx, targetPx, w, h);
+
+        // envelope check against the training data's per-dim range
+        let ood = false;
+        for (let i = 0; i < x.length; i++) {
+          const range = inputMax[i] - inputMin[i];
+          const m = ENVELOPE_MARGIN * range;
+          if (x[i] < inputMin[i] - m || x[i] > inputMax[i] + m) { ood = true; break; }
+        }
+
+        const vs = memberVelocities(x);
+        const nOut = vs[0].length;
+        const mean = new Array(nOut).fill(0);
+        for (const v of vs) for (let i = 0; i < nOut; i++) mean[i] += v[i] / vs.length;
+        let varSum = 0;
+        for (const v of vs) for (let i = 0; i < nOut; i++) {
+          const d = v[i] - mean[i];
+          varSum += d * d;
+        }
+        const sigma = Math.sqrt(varSum / (vs.length * nOut));
+        if (sigma > sigmaWarn) ood = true;
+
+        const gainScale = ood ? OOD_GAIN : 1;
+        const v = ibvs.clampRate(mean.map((vi) => vi * gainScale), ibvs.RATE_MAX);
+        for (let i = 0; i < 4; i++) qCmd[i] += v[i] * dt;
+        qCmd = pcc.clampQ(qCmd);
+        return { qCmd: qCmd.slice(), sigma, ood, gainScale, membersV: vs, meanV: mean };
+      },
+    };
+  }
+
+  CR.learned = { createLearned, OOD_GAIN };
+})(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));
+
+</script>
+<script>
+// ---- src/ui/render.js ----
+// Camera feed rendering: the robot as seen by the fixed pinhole camera, plus
+// the vision-HUD overlay (markers, target, uncertainty fan, OOD banner).
+(function (CR) {
+  'use strict';
+
+  const FEED_BG = '#151614';
+  const HUD = '#8a8f88';
+  const HUD_DIM = 'rgba(138,143,136,0.28)';
+  const TUBE_NEAR = [186, 190, 184]; // rgb of backbone at nearest depth
+  const WARNING = '#fab219';
+
+  const R_BASE = 0.048, R_TIP = 0.028; // tube radius, base -> tip
+
+  function drawFeed(ctx, o) {
+    // o: { W, H, cam, sim, accent, target, hull, fan, ood, oodGain, label, clickHint, t }
+    const { W, H, cam, sim } = o;
+    ctx.save();
+    ctx.fillStyle = FEED_BG;
+    ctx.fillRect(0, 0, W, H);
+
+    // camera reticle: thirds + corner brackets
+    ctx.strokeStyle = 'rgba(138,143,136,0.10)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 1; i <= 2; i++) {
+      ctx.moveTo((W * i) / 3, 0); ctx.lineTo((W * i) / 3, H);
+      ctx.moveTo(0, (H * i) / 3); ctx.lineTo(W, (H * i) / 3);
+    }
+    ctx.stroke();
+    ctx.strokeStyle = HUD_DIM;
+    const cb = 14, cm = 8;
+    ctx.beginPath();
+    for (const [x, y, dx, dy] of [[cm, cm, 1, 1], [W - cm, cm, -1, 1], [cm, H - cm, 1, -1], [W - cm, H - cm, -1, -1]]) {
+      ctx.moveTo(x + dx * cb, y); ctx.lineTo(x, y); ctx.lineTo(x, y + dy * cb);
+    }
+    ctx.stroke();
+
+    // approximate reachable outline (ideal model), dashed
+    if (o.hull && o.hull.length > 2) {
+      ctx.strokeStyle = 'rgba(138,143,136,0.22)';
+      ctx.setLineDash([4, 5]);
+      ctx.beginPath();
+      ctx.moveTo(o.hull[0][0], o.hull[0][1]);
+      for (const p of o.hull) ctx.lineTo(p[0], p[1]);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // backbone tube: project samples, draw far-to-near with depth-scaled width
+    const pts = sim.backbone(30);
+    const proj = pts.map((p) => cam.project(p));
+    const segs = [];
+    for (let i = 1; i < proj.length; i++) {
+      if (!proj[i - 1] || !proj[i]) continue;
+      const f = i / (proj.length - 1);
+      segs.push({ a: proj[i - 1], b: proj[i], z: (proj[i - 1][2] + proj[i][2]) / 2, f });
+    }
+    segs.sort((s1, s2) => s2.z - s1.z);
+    for (const s of segs) {
+      const r = R_BASE + (R_TIP - R_BASE) * s.f;
+      const wPx = Math.max(2, (cam.f * 2 * r) / s.z);
+      // darken with depth for a cheap shading cue
+      const zn = Math.min(1, Math.max(0, (s.z - 1.2) / 2.2));
+      const shade = 1 - 0.45 * zn;
+      ctx.strokeStyle = `rgb(${TUBE_NEAR.map((c) => Math.round(c * shade)).join(',')})`;
+      ctx.lineWidth = wPx;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(s.a[0], s.a[1]);
+      ctx.lineTo(s.b[0], s.b[1]);
+      ctx.stroke();
+    }
+
+    // base mount
+    const basePx = cam.project([0, 0, 0]);
+    if (basePx) {
+      ctx.fillStyle = '#3a3d39';
+      const bw = (cam.f * 0.16) / basePx[2];
+      ctx.fillRect(basePx[0] - bw / 2, basePx[1] - bw / 2, bw, bw * 1.2);
+    }
+
+    // markers: rings on the shaft, filled dot at the tip
+    const markers = sim.markers3().map((p) => cam.project(p));
+    ctx.lineWidth = 2;
+    for (let i = 0; i < markers.length; i++) {
+      const m = markers[i];
+      if (!m) continue;
+      if (i < 3) {
+        ctx.strokeStyle = o.accent;
+        ctx.beginPath();
+        ctx.arc(m[0], m[1], 4.5, 0, 2 * Math.PI);
+        ctx.stroke();
+      } else {
+        ctx.fillStyle = o.accent;
+        ctx.beginPath();
+        ctx.arc(m[0], m[1], 4, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.strokeStyle = o.accent;
+        ctx.beginPath();
+        ctx.arc(m[0], m[1], 8, 0, 2 * Math.PI);
+        ctx.stroke();
+      }
+    }
+
+    // uncertainty fan (learned feed): one thin arrow per ensemble member,
+    // then the mean, from the tip
+    const tip = markers[3];
+    if (o.fan && tip) {
+      ctx.lineCap = 'round';
+      for (const a of o.fan.members) {
+        ctx.strokeStyle = 'rgba(57,135,229,0.45)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(tip[0], tip[1]);
+        ctx.lineTo(tip[0] + a[0], tip[1] + a[1]);
+        ctx.stroke();
+      }
+      const m = o.fan.mean;
+      ctx.strokeStyle = '#3987e5';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(tip[0], tip[1]);
+      ctx.lineTo(tip[0] + m[0], tip[1] + m[1]);
+      ctx.stroke();
+    }
+
+    // target crosshair
+    if (o.target) {
+      const [u, v] = o.target;
+      ctx.strokeStyle = '#e8eae6';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(u, v, 7, 0, 2 * Math.PI);
+      ctx.moveTo(u - 12, v); ctx.lineTo(u - 4, v);
+      ctx.moveTo(u + 4, v); ctx.lineTo(u + 12, v);
+      ctx.moveTo(u, v - 12); ctx.lineTo(u, v - 4);
+      ctx.moveTo(u, v + 4); ctx.lineTo(u, v + 12);
+      ctx.stroke();
+    }
+
+    // HUD text
+    ctx.font = '10px ui-monospace, Menlo, Consolas, monospace';
+    ctx.fillStyle = HUD;
+    ctx.fillText(o.label, 14, H - 14);
+    const tstr = 't=' + o.t.toFixed(1).padStart(6) + 's';
+    ctx.fillText(tstr, W - 14 - ctx.measureText(tstr).width, H - 14);
+
+    // OOD banner
+    if (o.ood) {
+      ctx.fillStyle = 'rgba(21,22,20,0.85)';
+      ctx.fillRect(0, 0, W, 30);
+      ctx.fillStyle = WARNING;
+      ctx.font = '600 11px ui-monospace, Menlo, Consolas, monospace';
+      const msg = '⚠ OUTSIDE TRAINING ENVELOPE · GAIN ×' + o.oodGain.toFixed(2);
+      ctx.fillText(msg, (W - ctx.measureText(msg).width) / 2, 19);
+    }
+
+    // idle hint
+    if (o.clickHint) {
+      ctx.fillStyle = 'rgba(232,234,230,0.75)';
+      ctx.font = '12px system-ui, sans-serif';
+      const msg = 'click to set a target';
+      const pulse = 0.55 + 0.45 * Math.sin(o.t * 2.2);
+      ctx.globalAlpha = 0.35 + 0.4 * pulse;
+      ctx.fillText(msg, (W - ctx.measureText(msg).width) / 2, H / 2 - 40);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.restore();
+  }
+
+  CR.render = { drawFeed, FEED_BG };
+})(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));
+
+// ---- src/ui/chart.js ----
+// Validation charts: rolling tip-error timeline (two series) and the
+// ensemble-disagreement strip, with a shared crosshair tooltip.
+(function (CR) {
+  'use strict';
+
+  const INK2 = '#52514e';
+  const MUTED = '#898781';
+  const GRID = '#e1e0d9';
+  const BASELINE = '#c3c2b7';
+  const CLASSICAL = '#eb6834';
+  const LEARNED = '#2a78d6';
+  const WARN_WASH = 'rgba(250,178,25,0.14)';
+
+  const WINDOW_S = 16; // seconds shown
+  const PAD = { l: 44, r: 14, t: 10, b: 22 };
+
+  function createCharts(errCanvas, sigmaCanvas, tooltipEl) {
+    const samples = []; // {t, errC, errL, sigma, ood}
+    const events = [];  // {t, label}
+    let hoverX = null;  // css px within err canvas, or null
+    let sigmaThresh = 0.5;
+
+    function push(s) {
+      samples.push(s);
+      const cutoff = s.t - WINDOW_S - 1;
+      while (samples.length && samples[0].t < cutoff) samples.shift();
+      while (events.length && events[0].t < cutoff) events.shift();
+    }
+
+    function addEvent(t, label) { events.push({ t, label }); }
+    function reset() { samples.length = 0; events.length = 0; }
+    function setSigmaThreshold(v) { sigmaThresh = v; }
+
+    function xScale(W) {
+      const tMax = samples.length ? samples[samples.length - 1].t : 0;
+      const t0 = Math.max(0, tMax - WINDOW_S);
+      return { t0, t1: t0 + WINDOW_S, px: (t) => PAD.l + ((t - t0) / WINDOW_S) * (W - PAD.l - PAD.r) };
+    }
+
+    function niceMax(v) {
+      const steps = [40, 60, 80, 120, 160, 240, 320, 480];
+      for (const s of steps) if (v <= s) return s;
+      return Math.ceil(v / 100) * 100;
+    }
+
+    function drawLine(ctx, xs, W, H, yPx, key, color) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      let pen = false;
+      for (const s of samples) {
+        const x = xs.px(s.t), y = yPx(s[key]);
+        if (s[key] == null) { pen = false; continue; }
+        if (!pen) { ctx.moveTo(x, y); pen = true; }
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    function drawErr(ctx, W, H) {
+      ctx.clearRect(0, 0, W, H);
+      if (!samples.length) {
+        ctx.fillStyle = MUTED;
+        ctx.font = '12px system-ui, sans-serif';
+        ctx.fillText('Waiting for the first target.', PAD.l, H / 2);
+        return;
+      }
+      const xs = xScale(W);
+      let maxE = 40;
+      for (const s of samples) maxE = Math.max(maxE, s.errC || 0, s.errL || 0);
+      const yMax = niceMax(maxE * 1.05);
+      const yPx = (v) => PAD.t + (1 - v / yMax) * (H - PAD.t - PAD.b);
+
+      // grid + y labels
+      ctx.font = '10.5px ui-monospace, Menlo, Consolas, monospace';
+      ctx.textAlign = 'right';
+      for (let i = 0; i <= 4; i++) {
+        const v = (yMax / 4) * i;
+        const y = yPx(v);
+        ctx.strokeStyle = i === 0 ? BASELINE : GRID;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(W - PAD.r, y); ctx.stroke();
+        ctx.fillStyle = MUTED;
+        ctx.fillText(String(Math.round(v)), PAD.l - 6, y + 3.5);
+      }
+      ctx.textAlign = 'left';
+      // x ticks every 4 s
+      const tTick = Math.ceil(xs.t0 / 4) * 4;
+      ctx.fillStyle = MUTED;
+      for (let t = tTick; t <= xs.t1; t += 4) {
+        ctx.fillText(t.toFixed(0) + 's', xs.px(t) - 6, H - 6);
+      }
+
+      // settle band hairline at 6 px
+      const ySettle = yPx(6);
+      ctx.strokeStyle = BASELINE;
+      ctx.setLineDash([3, 4]);
+      ctx.beginPath(); ctx.moveTo(PAD.l, ySettle); ctx.lineTo(W - PAD.r, ySettle); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // condition-change event markers
+      ctx.font = '10px ui-monospace, Menlo, Consolas, monospace';
+      for (const ev of events) {
+        if (ev.t < xs.t0) continue;
+        const x = xs.px(ev.t);
+        ctx.strokeStyle = GRID;
+        ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, H - PAD.b); ctx.stroke();
+        ctx.fillStyle = MUTED;
+        ctx.save();
+        ctx.translate(x + 3, PAD.t + 2);
+        ctx.rotate(Math.PI / 2);
+        ctx.fillText(ev.label, 0, 0);
+        ctx.restore();
+      }
+
+      drawLine(ctx, xs, W, H, yPx, 'errC', CLASSICAL);
+      drawLine(ctx, xs, W, H, yPx, 'errL', LEARNED);
+
+      // direct labels at line ends
+      const last = samples[samples.length - 1];
+      ctx.font = '600 11px system-ui, sans-serif';
+      if (last.errC != null) {
+        ctx.fillStyle = CLASSICAL;
+        ctx.fillText('classical', Math.min(xs.px(last.t) + 5, W - 60), yPx(last.errC) + 3);
+      }
+      if (last.errL != null) {
+        ctx.fillStyle = LEARNED;
+        const yl = yPx(last.errL);
+        const yc = last.errC != null ? yPx(last.errC) : -99;
+        const y = Math.abs(yl - yc) < 12 ? yl + (yl >= yc ? 12 : -12) : yl;
+        ctx.fillText('learned', Math.min(xs.px(last.t) + 5, W - 60), y + 3);
+      }
+
+      // hover crosshair
+      if (hoverX != null && hoverX > PAD.l && hoverX < W - PAD.r) {
+        ctx.strokeStyle = INK2;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 3]);
+        ctx.beginPath(); ctx.moveTo(hoverX, PAD.t); ctx.lineTo(hoverX, H - PAD.b); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    function drawSigma(ctx, W, H) {
+      ctx.clearRect(0, 0, W, H);
+      if (!samples.length) return;
+      const xs = xScale(W);
+      let maxS = sigmaThresh * 1.6;
+      for (const s of samples) maxS = Math.max(maxS, s.sigma || 0);
+      const yPx = (v) => 6 + (1 - v / (maxS * 1.05)) * (H - 6 - 16);
+
+      // OOD wash spans
+      let spanStart = null;
+      for (let i = 0; i < samples.length; i++) {
+        const on = !!samples[i].ood;
+        if (on && spanStart == null) spanStart = samples[i].t;
+        if ((!on || i === samples.length - 1) && spanStart != null) {
+          const tEnd = on ? samples[i].t : samples[i - 1].t;
+          ctx.fillStyle = WARN_WASH;
+          ctx.fillRect(xs.px(spanStart), 6, Math.max(2, xs.px(tEnd) - xs.px(spanStart)), H - 22);
+          spanStart = null;
+        }
+      }
+
+      // baseline + threshold
+      ctx.strokeStyle = BASELINE;
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(PAD.l, yPx(0)); ctx.lineTo(W - PAD.r, yPx(0)); ctx.stroke();
+      ctx.setLineDash([3, 4]);
+      ctx.beginPath(); ctx.moveTo(PAD.l, yPx(sigmaThresh)); ctx.lineTo(W - PAD.r, yPx(sigmaThresh)); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = MUTED;
+      ctx.font = '10px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillText('warn', PAD.l - 34, yPx(sigmaThresh) + 3);
+
+      drawLine(ctx, xs, W, H, yPx, 'sigma', LEARNED);
+
+      if (hoverX != null && hoverX > PAD.l && hoverX < W - PAD.r) {
+        ctx.strokeStyle = INK2;
+        ctx.setLineDash([2, 3]);
+        ctx.beginPath(); ctx.moveTo(hoverX, 4); ctx.lineTo(hoverX, H - 14); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    function draw() {
+      for (const [cv, fn] of [[errCanvas, drawErr], [sigmaCanvas, drawSigma]]) {
+        const ctx = cv.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+        const W = cv.clientWidth || cv.width;
+        // canvases keep their attribute aspect ratio; back the store at dpr
+        const bw = Math.round(W * dpr), bh = Math.round((cv.getAttribute('height') / cv.getAttribute('width')) * W * dpr);
+        if (cv.width !== bw || cv.height !== bh) { cv.width = bw; cv.height = bh; }
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        fn(ctx, W, cv.height / dpr);
+      }
+    }
+
+    // tooltip wiring
+    function onMove(ev) {
+      const rect = errCanvas.getBoundingClientRect();
+      hoverX = ev.clientX - rect.left;
+      if (!samples.length) return;
+      const W = rect.width;
+      const xs = xScale(W);
+      const t = xs.t0 + ((hoverX - PAD.l) / (W - PAD.l - PAD.r)) * WINDOW_S;
+      let best = null;
+      for (const s of samples) if (!best || Math.abs(s.t - t) < Math.abs(best.t - t)) best = s;
+      if (best && hoverX > PAD.l) {
+        tooltipEl.style.display = 'block';
+        tooltipEl.style.left = Math.min(ev.clientX + 14, window.innerWidth - 170) + 'px';
+        tooltipEl.style.top = ev.clientY + 14 + 'px';
+        tooltipEl.textContent =
+          't        ' + best.t.toFixed(1) + ' s\n' +
+          'classical ' + (best.errC != null ? best.errC.toFixed(1) + ' px' : '–') + '\n' +
+          'learned   ' + (best.errL != null ? best.errL.toFixed(1) + ' px' : '–') + '\n' +
+          'σ         ' + (best.sigma != null ? best.sigma.toFixed(3) : '–');
+      }
+    }
+    function onLeave() { hoverX = null; tooltipEl.style.display = 'none'; }
+    for (const cv of [errCanvas, sigmaCanvas]) {
+      cv.addEventListener('mousemove', onMove);
+      cv.addEventListener('mouseleave', onLeave);
+    }
+
+    return { push, addEvent, reset, draw, setSigmaThreshold };
+  }
+
+  CR.chart = { createCharts };
+})(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));
+
+// ---- src/ui/main.js ----
+// App wiring: two truth-sim instances (same seed, same disturbances), one per
+// controller, a shared clicked target, trial metrics, charts and the
+// scripted demo sequence.
+(function (CR) {
+  'use strict';
+  const { pcc, camera, truth, ibvs, learned, render, chart } = CR;
+
+  const W = 460, H = 345;
+  const DT = 1 / 60;
+  const SEED = 2026;
+  const Q0 = [0.5, 0.1, -0.35, 0.3];
+  const SETTLE_PX = 6, SETTLE_HOLD = 0.8, TRIAL_S = 6;
+  const FAN_HORIZON = 0.35; // seconds of predicted motion shown by the fan
+
+  const $ = (id) => document.getElementById(id);
+  const cam = camera.defaultCamera(W, H);
+
+  // ---- reachable-set outline (ideal model), for the dashed HUD polygon ----
+  function computeHull() {
+    const rng = CR.makeRng(7);
+    const pts = [];
+    for (let n = 0; n < 3000; n++) {
+      const q = [];
+      for (let i = 0; i < 2; i++) {
+        const a = rng() * 2 * Math.PI, k = Math.sqrt(rng()) * pcc.KMAX[i];
+        q.push(k * Math.cos(a), k * Math.sin(a));
+      }
+      const p = cam.project(pcc.tip3(q));
+      if (p) pts.push([p[0], p[1]]);
+    }
+    pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lower = [], upper = [];
+    for (const p of pts) {
+      while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+      lower.push(p);
+    }
+    for (let i = pts.length - 1; i >= 0; i--) {
+      const p = pts[i];
+      while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+      upper.push(p);
+    }
+    return lower.slice(0, -1).concat(upper.slice(0, -1));
+  }
+  const hull = computeHull();
+  const hullCentroid = hull.reduce((a, p) => [a[0] + p[0] / hull.length, a[1] + p[1] / hull.length], [0, 0]);
+
+  // ---- views ----
+  const weights = typeof CR_WEIGHTS !== 'undefined' ? CR_WEIGHTS : null;
+  const learnedCtrl = learned.createLearned(weights);
+
+  const views = {
+    classical: {
+      canvas: $('feed-classical'),
+      sim: truth.createTruth(SEED),
+      ctrl: ibvs.createClassical(cam),
+      accent: '#d95926',
+      label: 'CAM 01 · CLASSICAL',
+      lastOut: null,
+    },
+    learned: {
+      canvas: $('feed-learned'),
+      sim: truth.createTruth(SEED),
+      ctrl: learnedCtrl,
+      accent: '#3987e5',
+      label: 'CAM 01 · LEARNED',
+      lastOut: null,
+    },
+  };
+  for (const v of Object.values(views)) {
+    const dpr = window.devicePixelRatio || 1;
+    v.canvas.width = W * dpr; v.canvas.height = H * dpr;
+    v.ctx = v.canvas.getContext('2d');
+    v.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  // ---- charts ----
+  const charts = chart.createCharts($('chart-err'), $('chart-sigma'), $('tooltip'));
+  if (learnedCtrl && learnedCtrl.sigmaWarn) charts.setSigmaThreshold(learnedCtrl.sigmaWarn);
+  let lastSample = null;
+  const origPush = charts.push;
+  charts.push = (s) => { lastSample = s; origPush(s); };
+
+  // ---- state ----
+  let t = 0;
+  let target = null;
+  let payloadTarget = 0, driftOn = false;
+  let trial = null;
+  let trialCount = 0;
+  let demo = null; // {steps, idx, tStart}
+  let hadClick = false;
+
+  function condString() {
+    const c = [];
+    if (payloadTarget > 0) c.push('payload');
+    if (driftOn) c.push('drift');
+    return c.length ? c.join('+') : 'nominal';
+  }
+
+  function startTrial(px) {
+    target = px;
+    trial = {
+      id: ++trialCount,
+      t0: t,
+      cond: condString(),
+      per: {
+        classical: { bandEnter: null, settle: null, tail: [] },
+        learned: { bandEnter: null, settle: null, tail: [] },
+      },
+    };
+    for (const key of Object.keys(views)) setState(key, 'servoing');
+  }
+
+  function abandonTrial() { trial = null; }
+
+  function finishTrial() {
+    const row = document.createElement('tr');
+    const fmt = (p) => {
+      const settle = p.settle != null ? p.settle.toFixed(2) + ' s' : 'dns';
+      const ss = p.tail.length
+        ? (p.tail.reduce((a, b) => a + b, 0) / p.tail.length).toFixed(1) + ' px' : '–';
+      return [settle, ss];
+    };
+    const [cs, css] = fmt(trial.per.classical);
+    const [ls, lss] = fmt(trial.per.learned);
+    row.innerHTML =
+      '<td>' + trial.id + '</td><td class="cond">' + trial.cond + '</td>' +
+      '<td>' + cs + '</td><td>' + css + '</td>' +
+      '<td>' + (views.learned.ctrl ? ls : '–') + '</td><td>' + (views.learned.ctrl ? lss : '–') + '</td>';
+    const body = $('trial-rows');
+    const empty = $('empty-row');
+    if (empty) empty.remove();
+    body.insertBefore(row, body.firstChild);
+    while (body.children.length > 10) body.removeChild(body.lastChild);
+    for (const key of Object.keys(views)) {
+      setState(key, trial.per[key].settle != null ? 'settled' : 'did not settle');
+      $(key === 'classical' ? 'ro-c-settle' : 'ro-l-settle').textContent =
+        trial.per[key].settle != null ? trial.per[key].settle.toFixed(2) + ' s' : 'dns';
+    }
+    trial = null;
+  }
+
+  function setState(key, s) {
+    $(key === 'classical' ? 'ro-c-state' : 'ro-l-state').textContent = s;
+  }
+
+  // ---- per-step update ----
+  function stepOnce() {
+    t += DT;
+    const sample = { t, errC: null, errL: null, sigma: null, ood: false };
+
+    for (const [key, v] of Object.entries(views)) {
+      // payload ramp + drift flag
+      const pt = payloadTarget;
+      if (v.sim.payload < pt) v.sim.payload = Math.min(pt, v.sim.payload + 1.2 * DT);
+      if (v.sim.payload > pt) v.sim.payload = Math.max(pt, v.sim.payload - 1.2 * DT);
+      v.sim.driftOn = driftOn;
+
+      const markersPx = v.sim.markers3().map((p) => cam.project(p));
+      const tipPx = markersPx[3];
+      let err = null;
+      if (target && tipPx && (key === 'classical' || v.ctrl)) {
+        err = Math.hypot(tipPx[0] - target[0], tipPx[1] - target[1]);
+        if (key === 'classical') {
+          const qCmd = v.ctrl.step([tipPx[0], tipPx[1]], target, DT);
+          v.sim.setCommand(qCmd);
+        } else if (v.ctrl) {
+          const out = v.ctrl.step(markersPx, target, DT, W, H);
+          v.sim.setCommand(out.qCmd);
+          v.lastOut = out;
+          sample.sigma = out.sigma;
+          sample.ood = out.ood;
+        }
+      }
+      v.sim.step(DT);
+      if (err != null) sample[key === 'classical' ? 'errC' : 'errL'] = err;
+
+      // trial bookkeeping
+      if (trial && err != null) {
+        const p = trial.per[key];
+        const tt = t - trial.t0;
+        if (err < SETTLE_PX) {
+          if (p.bandEnter == null) p.bandEnter = tt;
+          if (p.settle == null && tt - p.bandEnter >= SETTLE_HOLD) p.settle = p.bandEnter;
+        } else p.bandEnter = null;
+        if (tt > TRIAL_S - 1) p.tail.push(err);
+      }
+    }
+
+    if (trial && t - trial.t0 >= TRIAL_S) finishTrial();
+    if (target) charts.push(sample);
+  }
+
+  // ---- drawing ----
+  let frames = 0, fpsT = performance.now(), domTick = 0;
+  function drawAll() {
+    for (const [key, v] of Object.entries(views)) {
+      let fan = null;
+      if (key === 'learned' && v.ctrl && v.lastOut && target) {
+        const J = ibvs.idealJacobianPx(v.ctrl.qCmd(), cam);
+        const toPx = (vel) => {
+          const a = [
+            (J[0][0] * vel[0] + J[0][1] * vel[1] + J[0][2] * vel[2] + J[0][3] * vel[3]) * FAN_HORIZON,
+            (J[1][0] * vel[0] + J[1][1] * vel[1] + J[1][2] * vel[2] + J[1][3] * vel[3]) * FAN_HORIZON,
+          ];
+          const n = Math.hypot(a[0], a[1]);
+          return n > 46 ? [a[0] * 46 / n, a[1] * 46 / n] : a;
+        };
+        fan = { members: v.lastOut.membersV.map(toPx), mean: toPx(v.lastOut.meanV) };
+      }
+      render.drawFeed(v.ctx, {
+        W, H, cam, sim: v.sim, accent: v.accent, target, hull,
+        fan,
+        ood: key === 'learned' && v.ctrl && v.lastOut ? v.lastOut.ood : false,
+        oodGain: learned.OOD_GAIN,
+        label: v.label + (key === 'learned' && !v.ctrl ? ' · NO WEIGHTS EMBEDDED' : ''),
+        clickHint: !hadClick && !demo,
+        t,
+      });
+    }
+    charts.draw();
+
+    if (++domTick % 6 === 0) {
+      const last = target ? lastSample : null;
+      if (last) {
+        $('ro-c-err').textContent = last.errC != null ? last.errC.toFixed(1) + ' px' : '–';
+        $('ro-l-err').textContent = last.errL != null ? last.errL.toFixed(1) + ' px' : '–';
+        $('ro-l-sigma').textContent = last.sigma != null ? last.sigma.toFixed(3) : '–';
+      }
+    }
+
+    frames++;
+    const now = performance.now();
+    if (now - fpsT > 1000) {
+      $('fps').textContent = frames + ' fps';
+      frames = 0; fpsT = now;
+    }
+  }
+
+  // ---- main loop ----
+  let prev = performance.now(), acc = 0;
+  function loop(now) {
+    let dtReal = (now - prev) / 1000;
+    prev = now;
+    if (dtReal > 0.1) dtReal = 0.1;
+    acc += dtReal;
+    let n = 0;
+    while (acc >= DT && n < 4) { stepOnce(); runDemo(); acc -= DT; n++; }
+    drawAll();
+    requestAnimationFrame(loop);
+  }
+
+  // ---- interaction ----
+  function canvasClick(ev, v) {
+    const rect = v.canvas.getBoundingClientRect();
+    const px = [
+      (ev.clientX - rect.left) * (W / rect.width),
+      (ev.clientY - rect.top) * (H / rect.height),
+    ];
+    hadClick = true;
+    if (demo) stopDemo('demo stopped, you have the controls');
+    startTrial(px);
+  }
+  for (const v of Object.values(views)) {
+    v.canvas.addEventListener('click', (ev) => canvasClick(ev, v));
+  }
+
+  function toggleChanged() {
+    const p = $('tgl-payload').checked, d = $('tgl-drift').checked;
+    if (p !== (payloadTarget > 0)) {
+      payloadTarget = p ? 1 : 0;
+      charts.addEvent(t, p ? 'payload on' : 'payload off');
+    }
+    if (d !== driftOn) {
+      driftOn = d;
+      charts.addEvent(t, d ? 'drift on' : 'drift off');
+    }
+    if (trial && t - trial.t0 < TRIAL_S) abandonTrial();
+  }
+  $('tgl-payload').addEventListener('change', toggleChanged);
+  $('tgl-drift').addEventListener('change', toggleChanged);
+
+  function resetAll() {
+    for (const v of Object.values(views)) {
+      v.sim = truth.createTruth(SEED);
+      v.sim.reset(Q0);
+      if (v.ctrl) v.ctrl.reset(Q0);
+      v.lastOut = null;
+    }
+    target = null;
+    trial = null;
+    charts.reset();
+    $('ro-c-err').textContent = '–'; $('ro-l-err').textContent = '–';
+    $('ro-c-settle').textContent = '–'; $('ro-l-settle').textContent = '–';
+    $('ro-l-sigma').textContent = '–';
+    setState('classical', 'idle'); setState('learned', 'idle');
+  }
+  $('btn-reset').addEventListener('click', () => {
+    $('tgl-payload').checked = false; $('tgl-drift').checked = false;
+    payloadTarget = 0; driftOn = false;
+    if (demo) stopDemo('');
+    resetAll();
+  });
+
+  // ---- scripted demo ----
+  function targetFromQ(q) {
+    const p = cam.project(pcc.tip3(q));
+    return [p[0], p[1]];
+  }
+  const TQ = {
+    a: [1.15, -0.25, 0.55, 0.4],
+    b: [0.45, 0.5, -0.7, 0.35],
+    c: [1.6, 0.15, 0.2, -0.5],
+    d: [0.8, -0.5, 0.9, 0.6],
+  };
+  function oodTarget() {
+    // a pixel well outside the reachable outline: push a hull vertex out from
+    // the centroid by 40%
+    let best = hull[0], bd = 0;
+    for (const p of hull) {
+      const d = Math.hypot(p[0] - hullCentroid[0], p[1] - hullCentroid[1]);
+      if (d > bd) { bd = d; best = p; }
+    }
+    return [
+      hullCentroid[0] + (best[0] - hullCentroid[0]) * 1.4,
+      hullCentroid[1] + (best[1] - hullCentroid[1]) * 1.4,
+    ];
+  }
+
+  function demoSteps() {
+    const s = [];
+    let at = 0;
+    const add = (dt, fn, note) => { at += dt; s.push({ at, fn, note }); };
+    add(0, () => {
+      $('tgl-payload').checked = false; $('tgl-drift').checked = false;
+      payloadTarget = 0; driftOn = false;
+      resetAll();
+    }, 'Nominal physics. Same targets for both controllers.');
+    add(0.8, () => startTrial(targetFromQ(TQ.a)));
+    add(6.4, () => startTrial(targetFromQ(TQ.b)));
+    add(6.4, () => startTrial(targetFromQ(TQ.c)));
+    add(6.6, () => {
+      $('tgl-payload').checked = true; toggleChanged();
+    }, 'Payload on. The ideal model does not know about sag.');
+    add(1.2, () => startTrial(targetFromQ(TQ.a)));
+    add(6.4, () => startTrial(targetFromQ(TQ.b)));
+    add(6.4, () => startTrial(targetFromQ(TQ.d)));
+    add(6.6, () => {
+      $('tgl-drift').checked = true; toggleChanged();
+    }, 'Tendon drift on. A slow bias neither controller was told about.');
+    add(1.2, () => startTrial(targetFromQ(TQ.c)));
+    add(6.4, () => startTrial(targetFromQ(TQ.a)));
+    add(6.6, () => startTrial(oodTarget()),
+      'A target outside the training envelope. Warn, do not bluff.');
+    add(7.5, () => {
+      $('tgl-payload').checked = false; $('tgl-drift').checked = false;
+      toggleChanged();
+    }, 'Done. The table has the numbers; click anywhere to keep playing.');
+    add(0.1, () => stopDemo()); // keep the final note on screen
+    return s;
+  }
+
+  function runDemo() {
+    if (!demo) return;
+    while (demo.idx < demo.steps.length && t - demo.tStart >= demo.steps[demo.idx].at) {
+      const st = demo.steps[demo.idx++];
+      st.fn();
+      if (st.note) $('demo-note').textContent = '▸ ' + st.note;
+    }
+  }
+  function stopDemo(msg) {
+    demo = null;
+    $('btn-demo').textContent = 'Run scripted demo';
+    if (typeof msg === 'string') $('demo-note').textContent = msg;
+  }
+  $('btn-demo').addEventListener('click', () => {
+    if (demo) { stopDemo(''); return; }
+    hadClick = true;
+    demo = { steps: demoSteps(), idx: 0, tStart: t };
+    $('btn-demo').textContent = 'Stop demo';
+  });
+
+  // ---- go ----
+  resetAll();
+  // #demo starts the scripted demo immediately (handy for screen recording);
+  // #demo,ff=12 additionally fast-forwards 12 s of sim time (dev hook)
+  const hash = location.hash.slice(1).split(',');
+  if (hash.includes('demo')) $('btn-demo').click();
+  const ff = hash.find((s) => s.startsWith('ff='));
+  if (ff) {
+    const secs = Math.min(120, parseFloat(ff.slice(3)) || 0);
+    for (let i = 0; i < secs * 60; i++) { stepOnce(); runDemo(); }
+  }
+  requestAnimationFrame((now) => { prev = now; requestAnimationFrame(loop); });
+})(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));
+
+</script>
+</body>
+</html>
