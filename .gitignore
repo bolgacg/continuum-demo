@@ -1,0 +1,7 @@
+# Working notes for this project's coordination; not part of the demo.
+BRIEF.md
+COMMS.md
+
+node_modules/
+*.log
+.DS_Store
