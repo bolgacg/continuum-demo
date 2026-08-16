@@ -28,6 +28,8 @@ html = html.replace('/*__UI__*/', bundle(UI));
 
 const out = path.join(ROOT, 'demo.html');
 fs.writeFileSync(out, html);
+// index.html is the same page, so GitHub Pages serves it at the bare URL.
+fs.writeFileSync(path.join(ROOT, 'index.html'), html);
 const kb = (fs.statSync(out).size / 1024).toFixed(0);
-console.log('demo.html written (' + kb + ' kB, weights ' +
+console.log('demo.html + index.html written (' + kb + ' kB, weights ' +
   (weights === 'null' ? 'MISSING' : 'embedded') + ')');

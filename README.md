@@ -12,7 +12,9 @@ gap between the idealized model and the simulated truth is the point.
 
 ## Quick start
 
-Open `demo.html` in a browser. That is all: no install, no network, no libraries.
+Live at <https://bolgacg.github.io/continuum-demo/> — nothing to install.
+
+Or open `demo.html` in a browser. That is all: no install, no network, no libraries.
 Click either camera view to set a target, flip the payload and drift switches, or
 press "Run scripted demo" for a guided 60 second tour (`demo.html#demo` starts it
 automatically).
