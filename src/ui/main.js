@@ -34,6 +34,8 @@
   const classicalInner = ibvs.createClassical();
   const learnedInner = learned.createLearned(weights, { targetTest: (p) => trainIK.solveIK(p, [0, 0, 0, 0]).reachable });
   const mesh = workspace.envelopeMesh(volume);
+  const grid = ws && ws.grid ? workspace.gridFromJSON(ws.grid) : workspace.reachableGrid({ samples: 120000 });
+  let section = workspace.gridSectionSegments(grid, camera.CENTER[1]);
 
   const robots = {
     classical: {
@@ -68,9 +70,9 @@
   const orbitCam = () => camera.orbitCamera(orbit.az, orbit.el, W, H);
   function presetName() {
     const near = (p) => Math.abs(orbit.az - p.az) < 1e-6 && Math.abs(orbit.el - p.el) < 1e-6;
-    if (near(camera.PRESETS.side)) return '= CAM 01 SIDE SENSOR';
-    if (near(camera.PRESETS.top)) return '= CAM 02 TOP SENSOR';
-    if (near(camera.PRESETS.iso)) return 'ISOMETRIC';
+    if (near(camera.PRESETS.side)) return 'CAM 01 SIDE';
+    if (near(camera.PRESETS.top)) return 'CAM 02 TOP';
+    if (near(camera.PRESETS.iso)) return 'ISO';
     return 'az ' + ((orbit.az * 180) / Math.PI).toFixed(0) + '° el ' + ((orbit.el * 180) / Math.PI).toFixed(0) + '°';
   }
 
@@ -93,6 +95,7 @@
   let demo = null;
   let hadClick = false;
   let planeDrag = false;
+  let showTendons = false;
 
   function condString(reachable) {
     const c = [];
@@ -205,14 +208,14 @@
   function drawAll() {
     const learnedOut = robots.learned && robots.learned.lastOut;
     const live = target && robots.classical.lastOut;
-    const phase = live ? (robots.classical.lastOut.tracking ? ' · TRACKING PLAN' : ' · FEEDBACK LOOP') : '';
+    const phase = live ? (robots.classical.lastOut.tracking ? ' · PLAN' : ' · LOOP') : '';
     const robotsDraw = robotList.map((r) => ({
       sim: r.sim, accent: r.accent, fan: fanFor(r),
       sRef: r.lastOut ? r.lastOut.sRef : null,
       tracking: r.lastOut ? r.lastOut.tracking : false,
     }));
     const common = {
-      W, H, robots: robotsDraw, target,
+      W, H, robots: robotsDraw, target, naked: showTendons, section,
       volume: { mesh, show: true },
       ood: !!(target && learnedOut && learnedOut.ood), oodGain: learned.OOD_GAIN, t,
     };
@@ -221,8 +224,8 @@
       cam: orbitCam(),
       plane: { y: planeY, show: false },
       sensors: [{ cam: camSide, label: 'CAM 01' }, { cam: camTop, label: 'CAM 02' }],
-      label: 'INSPECTOR · ' + presetName() + phase,
-      clickHint: !hadClick && !demo ? 'drag to orbit · click to place a target on the plane' : null,
+      label: 'INSPECTOR · ' + presetName() + phase + (showTendons ? ' · TENDONS ×' + scene.TENDON_DRAW_SCALE : ''),
+      clickHint: !hadClick && !demo ? 'drag to orbit · click inside the outline to place a target' : null,
       hint: rayNote,
     }));
     scene.draw(views.side.ctx, Object.assign({}, common, {
@@ -230,7 +233,7 @@
       cam: camSide,
       plane: { y: planeY, show: true, active: planeDrag },
       sensors: null,
-      label: 'CAM 01 · SIDE SENSOR' + phase,
+      label: 'CAM 01 SIDE SENSOR' + phase + (showTendons ? ' · TENDONS ×' + scene.TENDON_DRAW_SCALE : ''),
       clickHint: !hadClick && !demo ? 'drag the plane to set the target height' : null,
       hint: '',
     }));
@@ -321,6 +324,7 @@
   function setPlaneY(y, live) {
     planeY = Math.max(PLANE_MIN, Math.min(PLANE_MAX, y));
     $('plane-y').value = planeY.toFixed(2);
+    section = workspace.gridSectionSegments(grid, planeY);
     if (lastRay && live) {
       target = targetFromRay();
       if (trial) abandonTrial();
@@ -355,6 +359,8 @@
   }
   $('plane-y').addEventListener('input', (ev) => setPlaneY(parseFloat(ev.target.value), true));
   $('plane-y').addEventListener('change', () => { if (target) startTrial(target); });
+
+  $('tgl-tendons').addEventListener('change', (ev) => { showTendons = ev.target.checked; });
 
   // presets
   for (const b of document.querySelectorAll('button[data-preset]')) {
@@ -477,6 +483,9 @@
     demo = { steps: demoSteps(), idx: 0, tStart: t };
     $('btn-demo').textContent = 'Stop demo';
   });
+
+  // dev hook: projected reach section in the inspector, for tests
+  window.CR_DEBUG = { reachCellsPx: () => { const cam = orbitCam(); return workspace.gridSliceCells(grid, planeY).map((p) => cam.project(p)).filter(Boolean).map((p) => [p[0], p[1]]); } };
 
   // ---- go ----
   $('plane-y').min = PLANE_MIN; $('plane-y').max = PLANE_MAX; $('plane-y').step = 0.01;

@@ -12,9 +12,15 @@ const rs = reach.r;
 console.log('reach: ' + reach.nt + 'x' + reach.np + ' bins, centre ' + JSON.stringify(reach.center) +
   ', radius ' + Math.min(...rs).toFixed(3) + '..' + Math.max(...rs).toFixed(3) +
   ', margin scale ' + reach.meta.marginScale + ', inside ' + (100 * reach.meta.insideFrac).toFixed(2) + '%, ' + (Date.now() - t0) + ' ms');
+const t1 = Date.now();
+const grid = CR.workspace.reachableGrid();
+let filled = 0;
+for (const b of grid.bits) for (let k = 0; k < 8; k++) filled += (b >> k) & 1;
+console.log('grid: ' + grid.n.join('x') + ' cells at ' + grid.res + ', ' + filled + ' reachable cells, ' + (Date.now() - t1) + ' ms');
 const out = path.join(__dirname, 'workspace.json');
 fs.writeFileSync(out, JSON.stringify({
-  meta: { date: '2026-08-31', note: 'outer radial envelope of the reachable tip set of the ideal PCC model at full curvature limits; bins theta x phi around the centroid, hole-filled, smoothed, scaled so 99.9% of 200k samples are inside' },
+  meta: { date: '2026-08-31', note: 'reach: outer radial envelope of the reachable tip set of the ideal PCC model at full curvature limits (bins theta x phi around the centroid, hole-filled, smoothed, scaled so 99.9% of 200k samples are inside). grid: occupancy of reachable tips on a 0.06 grid from 300k samples with a 3D closing; the envelope hides the unreachable interior, the grid does not.' },
   reach: { center: reach.center, nt: reach.nt, np: reach.np, r: reach.r, meta: reach.meta },
+  grid: CR.workspace.gridToJSON(grid),
 }));
 console.log('wrote ' + out + ' (' + (fs.statSync(out).size / 1024).toFixed(0) + ' kB)');

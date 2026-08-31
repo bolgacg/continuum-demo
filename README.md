@@ -49,9 +49,14 @@ about it followed from that:
 Version 3 senses with two fixed calibrated cameras (side and top), triangulates
 the four markers, and gives both controllers the same 3D estimate and a 3D
 target. A click in the orbiting inspector gives a ray; the height plane in the
-side sensor view turns the ray back into a point. The inspector has side, top and
-isometric presets, the tube a constant radius, and the markers two classes
-(filled at segment ends, hollow at midpoints). Two further changes and a fix:
+side sensor view turns the ray back into a point, and the outline drawn at the
+plane's height is the reachable set's cross-section there (from a sampled
+occupancy grid, holes included: near the base the reachable set is a ring, not a
+disc). The inspector has side, top and isometric presets, the tube a constant
+radius, the markers two classes (filled at segment ends, hollow at midpoints),
+and a Tendons switch that strips the tube and draws the three tendons per
+segment, brighter and thicker the harder they are pulled (radius drawn at 2.5x
+for legibility, stated on screen). Two further changes and a fix:
 
 4. **The boundary.** Version 1 drew the convex hull of the training targets in the
    image and called it close to the reachable set; it was not (about 35 px short
@@ -59,8 +64,11 @@ isometric presets, the tube a constant radius, and the markers two classes
    sampled configurations at the curvature limits, tips binned by direction
    around the cloud's centroid, largest radius per bin, holes filled, smoothed,
    scaled so 99.9% of samples are inside (`train/workspace.js`). It is an outer
-   envelope; reachability of a given target is decided by the planner's inverse
-   kinematics, and the trial table says "beyond reach" when it fails.
+   envelope and hides the unreachable interior near the base, so the cross-section
+   shown on the target plane comes from a 0.06-unit occupancy grid of 300,000
+   sampled tips instead (it agrees with the planner's reachability on 98.7% of
+   random points). Reachability of a given target is decided by the planner's
+   inverse kinematics, and the trial table says "beyond reach" when it fails.
 5. **Inverse kinematics.** Version 1 solved none; both controllers were local
    laws. Version 3 keeps local feedback laws on the 3D error (classical: damped
    pseudo-inverse of the ideal model's 3x4 Jacobian; learned: a regressed 4x3
@@ -207,7 +215,7 @@ build.js                 node build.js, writes demo.html + index.html
 src/core/                simulator, cameras + triangulation, controllers, planner, envelope
 src/ui/                  3D scene rendering, charts, app wiring
 train/train.js           data generation + ensemble training (writes weights.json)
-train/workspace.js       reachable envelope of the ideal model (writes workspace.json)
+train/workspace.js       reachable envelope + occupancy grid of the ideal model (writes workspace.json)
 train/eval.js            closed-loop evaluation tables (writes eval.json, rendered into the page)
 test/sanity.js           kinematics, cameras, truth-sim, control, planner and envelope checks
 ```

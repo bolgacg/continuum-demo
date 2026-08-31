@@ -34,7 +34,8 @@
 
   .feeds { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px; }
   .feed-card { min-width: 0; }
-  .feed-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .feed-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; height: 22px; white-space: nowrap; overflow: hidden; }
+  .feed-head .feed-sub { overflow: hidden; text-overflow: ellipsis; }
   .feed-title { font-weight: 600; font-size: 14.5px; }
   .feed-sub { color: var(--muted); font-size: 12.5px; }
   .feed-frame { position: relative; border-radius: 10px; overflow: hidden; background: var(--feed); border: 1px solid var(--border); }
@@ -138,7 +139,7 @@
     <div class="feed-card">
       <div class="feed-head">
         <span class="feed-title">Inspector</span>
-        <span class="feed-sub">orbit view · drag to orbit · click to place a target on the plane</span>
+        <span class="feed-sub">drag to orbit · click inside the outline to aim</span>
       </div>
       <div class="feed-frame"><canvas id="view-inspector" width="460" height="345"></canvas></div>
       <div class="feed-tools">
@@ -151,7 +152,7 @@
     <div class="feed-card">
       <div class="feed-head">
         <span class="feed-title">CAM 01 · side sensor</span>
-        <span class="feed-sub">one of the two cameras the controllers see through · drag the plane to set the target height</span>
+        <span class="feed-sub">what the controllers see · drag the plane</span>
       </div>
       <div class="feed-frame"><canvas id="view-side" width="460" height="345"></canvas></div>
       <div class="feed-tools">
@@ -180,6 +181,7 @@
 
   <div class="controls">
     <span class="hint">Both robots share the target, the disturbances and the planner.</span>
+    <label class="switch"><input type="checkbox" id="tgl-tendons"><span class="knob"></span>Tendons</label>
     <label class="switch"><input type="checkbox" id="tgl-plan" checked><span class="knob"></span>Plan first</label>
     <label class="switch"><input type="checkbox" id="tgl-payload"><span class="knob"></span>Payload</label>
     <label class="switch"><input type="checkbox" id="tgl-drift"><span class="knob"></span>Tendon drift</label>
@@ -238,7 +240,7 @@
   <div class="change">
     <h3>2. What version 3 changes for that</h3>
     <p><b>Sensing and task.</b> Two fixed, calibrated cameras (CAM 01 side, CAM 02 top) see the four markers; each marker is triangulated and both controllers get the same 3D estimate and a 3D target with a 3D error. The cameras add no noise, so the triangulation is exact; the page does not pretend otherwise.</p>
-    <p><b>Placing a target.</b> A click in the inspector still gives a ray. The height plane in the side sensor view turns the ray back into a point; move the plane and the target slides along the same ray.</p>
+    <p><b>Placing a target.</b> A click in the inspector still gives a ray. The height plane in the side sensor view turns the ray back into a point; move the plane and the target slides along the same ray. The outline drawn at the plane's height is the reachable set's cross-section there: click inside it and the target is reachable, outside it and the trial is marked beyond reach, the plan stops at the closest reachable point, and the ensemble flags a target it was never shown.</p>
     <p><b>Views.</b> The inspector orbits the workspace (drag), with side, top and isometric presets; the side and top presets are the sensors' own poses, so what the controllers see can be compared with any other angle. The tube is drawn with one constant radius. Segment ends are filled markers, midpoints hollow rings: two segments, one midpoint each.</p>
   </div>
 
@@ -275,7 +277,7 @@
   <ul class="notes">
     <li>Both controllers see exactly the same thing: four markers triangulated from two fixed cameras. Neither reads simulator state. The inspector is for you, not for them.</li>
     <li>The two robots are identical simulator instances with the same random seed, so the comparison is fair. Both sit under the same planner, and the planner can be switched off for both.</li>
-    <li>The robot's geometry is fixed: constant arc lengths, constant curvature per segment, markers at fixed arc positions (filled at the segment ends, hollow at the midpoints). What changed on screen in version 1 was perspective.</li>
+    <li>The robot's geometry is fixed: constant arc lengths, constant curvature per segment, markers at fixed arc positions (filled at the segment ends, hollow at the midpoints). What changed on screen in version 1 was perspective. The Tendons switch strips the tube and draws what actuates each segment: three tendons at fixed radius (drawn at 2.5 times the model's tendon radius so they can be told apart), brighter and thicker the harder the simulator says they are pulled, with spacer discs at the base, midpoint and end of each segment.</li>
     <li>The "truth" simulator is phenomenological: constant curvature plus actuator lag, tendon backlash, gravity droop, inter-segment coupling and optional tendon drift. Its curvature is biased by load, not redistributed along the arc, so it stays in the constant-curvature shape family; a rod model would be the next step, and the model mismatch here is milder than a real tendon-driven robot's.</li>
     <li>The learned controller imitates a training-time expert that could see the simulator's true Jacobian. At run time it has no such access. Three signals, all set from data, flag extrapolation: the target outside the population its training targets were drawn from (tips at up to 90% of the curvature limits, decided by the same inverse kinematics with the limits scaled to 90%), the feature vector far from the training set, or the five networks disagreeing. Any of them and it says so and lowers its own gain; the plan's feed-forward is not scaled, because it does not come from the networks.</li>
     <li>The translucent envelope is the outer boundary of the ideal model's reachable set. The truth robot never leaves it; the planner decides reachability point by point.</li>

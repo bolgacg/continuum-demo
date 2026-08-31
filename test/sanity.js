@@ -164,6 +164,17 @@ const camSide = camera.sideCamera(W, H), camTop = camera.topCamera(W, H);
   check('envelope mesh shape', mesh.length === vol.nt + 2 && mesh[1].length === vol.np);
   check('a point far above the envelope is outside', !workspace.insideEnvelope(vol, [0.1, 1.9, 0.6]));
   check('the demo\'s beyond-reach target is outside the envelope', !workspace.insideEnvelope(vol, [0.1, -0.1, 2.35]));
+  // occupancy grid agrees with the planner's reachability on random points
+  const grid = workspace.gridFromJSON(wsAll.grid);
+  let agree = 0, nPts = 0, gridYes = 0, ikYes = 0;
+  const rg = CR.makeRng(77);
+  for (let n = 0; n < 300; n++) {
+    const p = [-1.6 + 3.2 * rg(), -1.6 + 3.2 * rg(), -1.1 + 3.2 * rg()];
+    const g = workspace.gridContains(grid, p), k = pl.solveIK(p, [0, 0, 0, 0]).reachable;
+    nPts++; if (g === k) agree++; if (g) gridYes++; if (k) ikYes++;
+  }
+  check('reach grid agrees with IK reachability on >=93% of random points', agree / nPts >= 0.93, (100 * agree / nPts).toFixed(1) + '% (grid ' + gridYes + ', IK ' + ikYes + ' of ' + nPts + ')');
+  check('a slice of the grid has contour segments', workspace.gridSectionSegments(grid, -0.1).length > 50);
   // the ensemble flags targets outside the population it was trained on
   const L = CR.learned.createLearned(weights, { targetTest });
   const simF = truth.createTruth(1); simF.reset(Q0);

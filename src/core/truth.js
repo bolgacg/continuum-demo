@@ -158,6 +158,9 @@
     };
 
     sim.qEff = () => sim.qEffCache;
+    // transmitted tendon displacement (after lag, backlash, drift) and the
+    // commanded one, per tendon index 3*i+j; negative = shortened (pulled)
+    sim.tendonState = (idx) => ({ commanded: sim.target[idx], transmitted: sim.play[idx] + sim.drift[idx] });
     sim.markers3 = () => pcc.markers3(sim.qEffCache);
     sim.backbone = (n) => pcc.backbone(sim.qEffCache, n);
 
@@ -215,5 +218,5 @@
     return J;
   }
 
-  CR.truth = { PARAMS: P, createTruth, truthJacobianPx, truthJacobian3, applyStatic };
+  CR.truth = { PARAMS: P, BETA, createTruth, truthJacobianPx, truthJacobian3, applyStatic };
 })(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));

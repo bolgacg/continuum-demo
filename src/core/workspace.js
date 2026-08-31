@@ -121,6 +121,138 @@
     return rows;
   }
 
+  // Occupancy grid of the reachable tip set (the envelope is an outer surface
+  // and hides the unreachable interior near the base; this does not). Cells of
+  // side `res` over a fixed box, filled from sampled tips, then a 3D closing
+  // (dilate, erode, 6-neighbour) to remove sampling holes. Packed bits.
+  const GRID_BOX = { min: [-1.7, -1.7, -1.2], max: [1.7, 1.7, 2.2] };
+  function reachableGrid(opts) {
+    const o = Object.assign({ samples: 300000, res: 0.06, seed: 5, scale: 1.0 }, opts || {});
+    const n = [0, 1, 2].map((k) => Math.ceil((GRID_BOX.max[k] - GRID_BOX.min[k]) / o.res));
+    const total = n[0] * n[1] * n[2];
+    let g = new Uint8Array(total);
+    const idx = (i, j, k) => (i * n[1] + j) * n[2] + k;
+    const rng = CR.makeRng(o.seed);
+    for (let s = 0; s < o.samples; s++) {
+      const q = [];
+      for (let m = 0; m < pcc.NSEG; m++) {
+        const a = rng() * 2 * Math.PI, kk = Math.sqrt(rng()) * o.scale * pcc.KMAX[m];
+        q.push(kk * Math.cos(a), kk * Math.sin(a));
+      }
+      const p = pcc.tip3(q);
+      const i = Math.floor((p[0] - GRID_BOX.min[0]) / o.res), j = Math.floor((p[1] - GRID_BOX.min[1]) / o.res), k = Math.floor((p[2] - GRID_BOX.min[2]) / o.res);
+      if (i >= 0 && j >= 0 && k >= 0 && i < n[0] && j < n[1] && k < n[2]) g[idx(i, j, k)] = 1;
+    }
+    const morph = (src, fill) => {
+      const out = new Uint8Array(total);
+      for (let i = 0; i < n[0]; i++) for (let j = 0; j < n[1]; j++) for (let k = 0; k < n[2]; k++) {
+        const c = src[idx(i, j, k)];
+        const nb = [
+          i > 0 ? src[idx(i - 1, j, k)] : 0, i < n[0] - 1 ? src[idx(i + 1, j, k)] : 0,
+          j > 0 ? src[idx(i, j - 1, k)] : 0, j < n[1] - 1 ? src[idx(i, j + 1, k)] : 0,
+          k > 0 ? src[idx(i, j, k - 1)] : 0, k < n[2] - 1 ? src[idx(i, j, k + 1)] : 0,
+        ];
+        out[idx(i, j, k)] = fill ? (c || nb.some((v) => v) ? 1 : 0) : (c && nb.every((v) => v) ? 1 : 0);
+      }
+      return out;
+    };
+    g = morph(morph(g, true), false);
+    return { min: GRID_BOX.min.slice(), res: o.res, n, bits: packBits(g) };
+  }
+  function packBits(u8) {
+    const out = new Uint8Array(Math.ceil(u8.length / 8));
+    for (let i = 0; i < u8.length; i++) if (u8[i]) out[i >> 3] |= 1 << (i & 7);
+    return out;
+  }
+  function gridGet(grid, i, j, k) {
+    const { n } = grid;
+    if (i < 0 || j < 0 || k < 0 || i >= n[0] || j >= n[1] || k >= n[2]) return 0;
+    const b = (i * n[1] + j) * n[2] + k;
+    return (grid.bits[b >> 3] >> (b & 7)) & 1;
+  }
+  function gridContains(grid, p) {
+    const i = Math.floor((p[0] - grid.min[0]) / grid.res), j = Math.floor((p[1] - grid.min[1]) / grid.res), k = Math.floor((p[2] - grid.min[2]) / grid.res);
+    return !!gridGet(grid, i, j, k);
+  }
+  // base64 round trip for JSON embedding (Node and browser)
+  function gridToJSON(grid) {
+    const bytes = grid.bits;
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    const b64 = typeof btoa === 'function' ? btoa(bin) : Buffer.from(bin, 'binary').toString('base64');
+    return { min: grid.min, res: grid.res, n: grid.n, bits64: b64 };
+  }
+  function gridFromJSON(j) {
+    const bin = typeof atob === 'function' ? atob(j.bits64) : Buffer.from(j.bits64, 'base64').toString('binary');
+    const bits = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bits[i] = bin.charCodeAt(i);
+    return { min: j.min, res: j.res, n: j.n, bits };
+  }
+
+  // Horizontal slice of the grid at height y, traced with marching squares:
+  // returns line segments (pairs of world points) covering every contour,
+  // holes included. Corner values are cell occupancies; segments pass through
+  // edge midpoints, so the outline sits half a cell outside occupied centres.
+  function gridSectionSegments(grid, y) {
+    const { n, res, min } = grid;
+    const j = Math.floor((y - min[1]) / res);
+    if (j < 0 || j >= n[1]) return [];
+    const cx = (i) => min[0] + (i + 0.5) * res, cz = (k) => min[2] + (k + 0.5) * res;
+    const segs = [];
+    // corners of the marching cell (i,k): a=(i,k) b=(i+1,k) c=(i+1,k+1) d=(i,k+1)
+    for (let i = -1; i < n[0]; i++) for (let k = -1; k < n[2]; k++) {
+      const a = gridGet(grid, i, j, k), b = gridGet(grid, i + 1, j, k), c = gridGet(grid, i + 1, j, k + 1), d = gridGet(grid, i, j, k + 1);
+      const code = (a << 3) | (b << 2) | (c << 1) | d;
+      if (code === 0 || code === 15) continue;
+      const top = [cx(i) + res / 2, y, cz(k)], right = [cx(i + 1), y, cz(k) + res / 2];
+      const bottom = [cx(i) + res / 2, y, cz(k + 1)], left = [cx(i), y, cz(k) + res / 2];
+      const add = (p, q) => segs.push([p, q]);
+      switch (code) {
+        case 1: case 14: add(left, bottom); break;
+        case 2: case 13: add(bottom, right); break;
+        case 3: case 12: add(left, right); break;
+        case 4: case 11: add(top, right); break;
+        case 5: add(top, left); add(bottom, right); break;
+        case 6: case 9: add(top, bottom); break;
+        case 7: case 8: add(top, left); break;
+        case 10: add(top, right); add(left, bottom); break;
+        default: break;
+      }
+    }
+    return segs;
+  }
+  // occupied cell centres on the slice (for tests and hints)
+  function gridSliceCells(grid, y) {
+    const { n, res, min } = grid;
+    const j = Math.floor((y - min[1]) / res);
+    const out = [];
+    if (j < 0 || j >= n[1]) return out;
+    for (let i = 0; i < n[0]; i++) for (let k = 0; k < n[2]; k++) {
+      if (gridGet(grid, i, j, k)) out.push([min[0] + (i + 0.5) * res, y, min[2] + (k + 0.5) * res]);
+    }
+    return out;
+  }
+
+  // Horizontal cross-section of the envelope at height y: polygon of world
+  // points ordered by azimuth; empty if the plane misses the envelope.
+  function envelopeSection(vol, y, mesh) {
+    const rows = mesh || envelopeMesh(vol);
+    const cols = rows[1].length;
+    const poly = [];
+    for (let j = 0; j < cols; j++) {
+      for (let i = 0; i < rows.length - 1; i++) {
+        const a = rows[i][j], b = rows[i + 1][j];
+        const da = a[1] - y, db = b[1] - y;
+        if ((da > 0) !== (db > 0)) {
+          const t = da / (da - db);
+          poly.push([a[0] + (b[0] - a[0]) * t, y, a[2] + (b[2] - a[2]) * t]);
+          break;
+        }
+      }
+    }
+    return poly;
+  }
+
   // Is a world point inside the envelope (nearest-bin radial test)?
   function insideEnvelope(vol, p) {
     const { nt, np, r, center } = vol;
@@ -133,5 +265,6 @@
     return rr <= r[i * np + j];
   }
 
-  CR.workspace = { reachableVolume, envelopeMesh, insideEnvelope };
+  CR.workspace = { reachableVolume, envelopeMesh, envelopeSection, insideEnvelope,
+    reachableGrid, gridContains, gridToJSON, gridFromJSON, gridSectionSegments, gridSliceCells };
 })(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));

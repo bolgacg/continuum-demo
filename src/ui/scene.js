@@ -1,5 +1,5 @@
 // 3D scene rendering onto a 2D canvas through any camera: both robots, the
-// reachable envelope, the floor grid, the target with its drop line, the
+// reachable envelope, its cross-section at the target plane, the target, the
 // target plane, the sensors, the tracking reference and the ensemble fan.
 // Painter's algorithm: every primitive carries its camera depth and the list
 // is drawn far to near. The same function draws the inspector (orbit camera)
@@ -13,26 +13,10 @@
   const HUD_DIM = 'rgba(138,143,136,0.28)';
   const WARNING = '#fab219';
   const R_TUBE = 0.038;   // constant drawn radius; the model has no cross-section
-  const FLOOR_Y = -1.75;  // ground reference plane, below the workspace
   const PLANE = { x: [-1.7, 1.7], z: [-1.3, 2.1] };
 
   function hexToRgb(hex) {
     return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
-  }
-
-  function drawFloor(ctx, cam) {
-    ctx.strokeStyle = 'rgba(138,143,136,0.10)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let x = -1.6; x <= 1.6001; x += 0.4) {
-      const a = cam.project([x, FLOOR_Y, -1.2]), b = cam.project([x, FLOOR_Y, 2.0]);
-      if (a && b) { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
-    }
-    for (let z = -1.2; z <= 2.0001; z += 0.4) {
-      const a = cam.project([-1.6, FLOOR_Y, z]), b = cam.project([1.6, FLOOR_Y, z]);
-      if (a && b) { ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); }
-    }
-    ctx.stroke();
   }
 
   // Envelope quads split into a far half and a near half around the centre
@@ -87,15 +71,14 @@
       return { c, g };
     };
     const far = make(), near = make();
-    drawFloor(far.g, cam);
     if (volume && volume.show && volume.mesh) {
       // smooth silhouette from the full-resolution mesh, wireframe from a
       // coarser one; both rasterized once per camera pose
       const fine = domeQuads(cam, volume.mesh, 1);
       const coarse = domeQuads(cam, volume.mesh, 3);
-      fillQuads(far.g, fine.far, 'rgba(138,143,136,0.06)', 'rgba(0,0,0,0)');
+      fillQuads(far.g, fine.far, 'rgba(138,143,136,0.055)', 'rgba(0,0,0,0)');
       fillQuads(far.g, coarse.far, 'rgba(0,0,0,0)', 'rgba(138,143,136,0.10)');
-      fillQuads(near.g, fine.near, 'rgba(138,143,136,0.05)', 'rgba(0,0,0,0)');
+      fillQuads(near.g, fine.near, 'rgba(138,143,136,0.055)', 'rgba(0,0,0,0)');
       fillQuads(near.g, coarse.near, 'rgba(0,0,0,0)', 'rgba(138,143,136,0.07)');
     }
     entry = { sig, far: far.c, near: near.c };
@@ -124,6 +107,72 @@
       ctx.font = '10px ui-monospace, Menlo, Consolas, monospace';
       ctx.fillStyle = HUD;
       ctx.fillText('target plane  y = ' + (y * 100).toFixed(0) + ' mm', hpx[0] - 150, hpx[1] - 9);
+    }
+  }
+
+  // Naked view: the three tendons of each segment as the offset curves they
+  // are (radius tendonRadius in the segment's local frame at 0, 120, 240
+  // degrees), coloured and widened by how hard the simulator says each one is
+  // currently pulled (transmitted displacement, so backlash and drift show),
+  // plus spacer discs at the base, midpoint and end of each segment.
+  const TENDON_N = 14;
+  const TENDON_DRAW_SCALE = 2.5; // drawn radius exaggeration, stated in the HUD
+  function nakedPrims(ctx, cam, r, rgb, prims) {
+    const { truth } = CR;
+    const q = r.sim.qEff();
+    const rt = truth.PARAMS.tendonRadius * TENDON_DRAW_SCALE;
+    const light = rgb.map((c) => Math.round(c + (255 - c) * 0.5));
+    for (let i = 0; i < pcc.NSEG; i++) {
+      const L = pcc.SEG_LEN[i];
+      const pullMax = truth.PARAMS.tendonRadius * L * pcc.KMAX[i];
+      for (let j = 0; j < 3; j++) {
+        const beta = truth.BETA[j];
+        const off = [rt * Math.cos(beta), rt * Math.sin(beta), 0];
+        const st = r.sim.tendonState(3 * i + j);
+        const pull = Math.max(0, Math.min(1, -st.transmitted / pullMax)); // 1 = fully shortened
+        const pts = [];
+        let zSum = 0;
+        for (let k = 0; k <= TENDON_N; k++) {
+          const pose = pcc.poseAt(q, i, (k / TENDON_N) * L);
+          const p = cam.project(v3.add(pose.p, CR.m3.mulVec(pose.R, off)));
+          if (!p) { pts.length = 0; break; }
+          pts.push(p); zSum += p[2];
+        }
+        if (!pts.length) continue;
+        // one polyline per tendon (one stroke), depth = its mean depth
+        prims.push({ z: zSum / pts.length, draw() {
+          const alpha = 0.3 + 0.7 * pull;
+          const c = pull > 0.03 ? light : [140, 143, 138];
+          ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${alpha.toFixed(3)})`;
+          ctx.lineWidth = 1.2 + 2.6 * pull;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+          ctx.stroke();
+        } });
+      }
+      // spacer discs at base (segment 1 only), midpoint and end
+      const stations = i === 0 ? [0, 0.5, 1] : [0.5, 1];
+      for (const f of stations) {
+        const pose = pcc.poseAt(q, i, f * L);
+        const ring = [];
+        for (let k = 0; k <= 20; k++) {
+          const a = (k / 20) * 2 * Math.PI;
+          ring.push(cam.project(v3.add(pose.p, CR.m3.mulVec(pose.R, [rt * Math.cos(a), rt * Math.sin(a), 0]))));
+        }
+        if (ring.some((p) => !p)) continue;
+        const z = cam.depth(pose.p);
+        prims.push({ z: z - 1e-4, draw() {
+          ctx.strokeStyle = 'rgba(200,203,198,0.32)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(ring[0][0], ring[0][1]);
+          for (let k = 1; k < ring.length; k++) ctx.lineTo(ring[k][0], ring[k][1]);
+          ctx.stroke();
+        } });
+      }
     }
   }
 
@@ -181,22 +230,24 @@
 
     if (o.plane && o.plane.show) drawPlane(ctx, cam, o.plane.y, o.plane);
 
-    // target: drop line to the floor, then the marker itself
-    let tpx = null;
-    if (o.target) {
-      tpx = cam.project(o.target);
-      const foot = cam.project([o.target[0], FLOOR_Y, o.target[2]]);
-      if (tpx && foot) {
-        ctx.strokeStyle = 'rgba(232,234,230,0.25)';
-        ctx.setLineDash([2, 4]);
-        ctx.beginPath(); ctx.moveTo(tpx[0], tpx[1]); ctx.lineTo(foot[0], foot[1]); ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.strokeStyle = 'rgba(232,234,230,0.35)';
-        ctx.beginPath(); ctx.arc(foot[0], foot[1], 3, 0, 2 * Math.PI); ctx.stroke();
+    // reachable cross-section at the target plane's height: where a click lands
+    // inside reach. Drawn in both views (edge-on in the side sensor view).
+    if (o.section && o.section.length) {
+      ctx.beginPath();
+      for (const [p, q] of o.section) {
+        const a = cam.project(p), b = cam.project(q);
+        if (!a || !b) continue;
+        ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
       }
+      ctx.strokeStyle = 'rgba(232,234,230,0.5)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
     }
 
-    // depth-sorted primitives: tube segments of both robots
+    const tpx = o.target ? cam.project(o.target) : null;
+
+    // depth-sorted primitives: tube segments of both robots, or in the naked
+    // view the thin backbone, the three tendons per segment and spacer discs
     const prims = [];
     for (const r of o.robots) {
       const rgb = hexToRgb(r.accent);
@@ -207,15 +258,16 @@
         const z = (proj[i - 1][2] + proj[i][2]) / 2;
         const a = proj[i - 1], b = proj[i];
         prims.push({ z, draw() {
-          const wPx = Math.max(2, (cam.f * 2 * R_TUBE) / z);
           const zn = Math.min(1, Math.max(0, (z - 1.6) / 2.6));
           const shade = 1 - 0.4 * zn;
-          ctx.strokeStyle = `rgba(${Math.round((rgb[0] * 0.55 + 120 * 0.45) * shade)},${Math.round((rgb[1] * 0.55 + 122 * 0.45) * shade)},${Math.round((rgb[2] * 0.55 + 118 * 0.45) * shade)},0.85)`;
-          ctx.lineWidth = wPx;
+          const col = `rgba(${Math.round((rgb[0] * 0.55 + 120 * 0.45) * shade)},${Math.round((rgb[1] * 0.55 + 122 * 0.45) * shade)},${Math.round((rgb[2] * 0.55 + 118 * 0.45) * shade)},0.85)`;
+          ctx.strokeStyle = col;
+          ctx.lineWidth = o.naked ? 2 : Math.max(2, (cam.f * 2 * R_TUBE) / z);
           ctx.lineCap = 'round';
           ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
         } });
       }
+      if (o.naked) nakedPrims(ctx, cam, r, rgb, prims);
     }
     prims.sort((p, q) => q.z - p.z);
     for (const p of prims) p.draw();
@@ -352,5 +404,5 @@
     return cam.pos[1] + t * d[1];
   }
 
-  CR.scene = { draw, planeScreenY, planeYFromPixel, FLOOR_Y, R_TUBE };
+  CR.scene = { draw, planeScreenY, planeYFromPixel, R_TUBE, TENDON_DRAW_SCALE };
 })(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));
