@@ -67,7 +67,7 @@
     const ce = Math.cos(el), se = Math.sin(el);
     const dir = [ce * Math.cos(az), ce * Math.sin(az), se];
     const up = [-se * Math.cos(az), -se * Math.sin(az), ce];
-    return makeCamera({ pos: v3.add(CENTER, v3.scale(dir, d)), target: CENTER, up, f: 0.78 * w, w, h });
+    return makeCamera({ pos: v3.add(CENTER, v3.scale(dir, d)), target: CENTER, up, f: 0.62 * w, w, h });
   }
 
   // The two sensors. Side: from +x, nearly level with the workspace centre
