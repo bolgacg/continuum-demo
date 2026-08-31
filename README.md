@@ -114,15 +114,16 @@ respect to curvature, and do damped least squares descent on the 3D tip error.
 Honestly implemented and honestly degraded: under payload its Jacobian points the
 wrong way during transients, and backlash plus drift leave it hunting.
 
-**Learned controller.** Five small MLPs (15 inputs, two hidden layers, 12 outputs; see `train/train.js` for the current sizes)
+**Learned controller.** Five small MLPs (15 inputs, hidden layers of 64 and 48, 12 outputs)
 each regress a 4x3 feedback gain matrix G from the triangulated markers and the
 error; the command is v = G e. Structuring the output as a gain matrix means
 commands vanish exactly at zero error. Training labels come from a privileged
 expert, damped least squares on the truth simulator's own Jacobian, which exists
 only at training time. Data: episodes with randomized flexibility (x0.7 to
 x1.8), payload, drift, poses and 3D targets, exploration noise on the applied
-actions. Training runs offline in Node (`train/train.js`, plain JavaScript, no
-frameworks) and the weights ship embedded in the page.
+actions; 600 episodes, 93,600 samples. Training runs offline in Node
+(`train/train.js`, plain JavaScript, no frameworks) and the weights ship embedded
+in the page.
 
 **Uncertainty.** Three signals. The target is tested against the population the
 training targets were drawn from (tips at up to 90% of the curvature limits at
@@ -156,31 +157,33 @@ targets are tips at 95 to 100% of the curvature limit; interior targets up to
 Targets are restricted to above the table the upright robot stands on (z of
 at least 5 mm).
 
+<!--EVAL_TABLES-->
 ### Interior targets
 
 | condition | controller | direct settled | direct median settle | direct steady-state | planned settled | planned median settle | planned steady-state |
 |---|---|---|---|---|---|---|---|
 | nominal | classical | 36/40 | 1.48 s | 2.7 mm | 40/40 | 1.83 s | 0.5 mm |
-| nominal | learned | 35/40 | 2.15 s | 2.1 mm | 40/40 | 1.93 s | 0.7 mm |
+| nominal | learned | 36/40 | 2.02 s | 1.7 mm | 40/40 | 2.00 s | 0.7 mm |
 | payload | classical | 34/40 | 1.43 s | 2.9 mm | 39/40 | 1.73 s | 0.9 mm |
-| payload | learned | 34/40 | 2.32 s | 2.8 mm | 39/40 | 1.80 s | 1.0 mm |
+| payload | learned | 36/40 | 2.03 s | 1.7 mm | 38/40 | 1.78 s | 1.1 mm |
 | drift | classical | 34/40 | 2.00 s | 5.1 mm | 39/40 | 2.13 s | 3.4 mm |
-| drift | learned | 30/40 | 2.53 s | 4.4 mm | 37/40 | 2.45 s | 3.3 mm |
+| drift | learned | 30/40 | 2.38 s | 4.0 mm | 37/40 | 2.25 s | 3.4 mm |
 | payload + drift | classical | 28/40 | 2.78 s | 5.5 mm | 34/40 | 2.87 s | 4.1 mm |
-| payload + drift | learned | 23/40 | 2.87 s | 5.2 mm | 28/40 | 2.77 s | 4.0 mm |
+| payload + drift | learned | 28/40 | 2.58 s | 4.2 mm | 33/40 | 2.92 s | 4.0 mm |
 
 ### Edge targets
 
 | condition | controller | direct settled | direct median settle | direct steady-state | planned settled | planned median settle | planned steady-state |
 |---|---|---|---|---|---|---|---|
 | nominal | classical | 28/40 | 1.45 s | 12.2 mm | 40/40 | 2.02 s | 0.4 mm |
-| nominal | learned | 32/40 | 1.97 s | 2.8 mm | 40/40 | 2.05 s | 0.5 mm |
+| nominal | learned | 37/40 | 1.87 s | 8.6 mm | 40/40 | 1.98 s | 0.5 mm |
 | payload | classical | 27/40 | 1.58 s | 12.8 mm | 40/40 | 2.18 s | 0.9 mm |
-| payload | learned | 35/40 | 1.72 s | 2.3 mm | 40/40 | 2.03 s | 0.6 mm |
+| payload | learned | 35/40 | 1.77 s | 1.8 mm | 40/40 | 1.95 s | 0.7 mm |
 | drift | classical | 25/40 | 2.30 s | 15.2 mm | 40/40 | 2.28 s | 2.5 mm |
-| drift | learned | 32/40 | 2.67 s | 5.8 mm | 39/40 | 2.28 s | 2.6 mm |
+| drift | learned | 33/40 | 2.30 s | 10.6 mm | 40/40 | 2.35 s | 2.5 mm |
 | payload + drift | classical | 25/40 | 2.70 s | 15.0 mm | 38/40 | 3.05 s | 3.1 mm |
-| payload + drift | learned | 32/40 | 2.78 s | 4.7 mm | 37/40 | 2.35 s | 3.0 mm |
+| payload + drift | learned | 31/40 | 2.23 s | 4.3 mm | 38/40 | 2.47 s | 2.9 mm |
+<!--/EVAL_TABLES-->
 
 The ensemble flagged nothing in these conditions: every target lies inside the
 population it was trained on (tips at up to 90% of the limits, flexibility up
@@ -189,17 +192,18 @@ to x1.8).
 What the tables say. Above the table, the direct classical law loses 12 of 40
 edge targets and stalls about 12 mm short, committed to a bending plane from
 which the target is not reachable within the limits; the direct learned law
-loses 8. The plan takes both to 40 of 40 and keeps that advantage under payload
+loses 3. The plan takes both to 40 of 40 and keeps that advantage under payload
 and drift, at a cost of about 0.3 s on interior targets. The curled-back region
 below the base, where the horizontal-frame builds had found the direct laws
 stalling more than 100 mm short, is behind the table now and out of the
-evaluation. The ensemble trained across the whole flexibility range is on par
-with the classical law under payload and somewhat behind it under drift, where
-the single-mechanism ensemble of the previous build had been ahead: the price
-of generality at this network size, reported rather than hidden. A null-space
-term (curvature minimization, or a pull toward a good configuration) was tried
-before the planner and moved the numbers only slightly, because the failure is a
-basin, not a redundancy resolution.
+evaluation. One ensemble covers the whole flexibility range: a first attempt at
+the original size fell behind the classical law under payload; doubling the data
+and enlarging the network (93,600 samples, hidden layers of 64 and 48) brought
+it back, ahead of the classical law under payload and on edge targets, level
+under payload with drift, slightly behind under drift alone. A null-space term
+(curvature minimization, or a pull toward a good configuration) was tried before
+the planner and moved the numbers only slightly, because the failure is a basin,
+not a redundancy resolution.
 
 ## What this does not claim
 
@@ -226,11 +230,12 @@ src/ui/                  3D scene rendering, charts, app wiring
 train/train.js           data generation + ensemble training (writes weights.json)
 train/workspace.js       reachable envelope + occupancy grid of the ideal model (writes workspace.json)
 train/eval.js            closed-loop evaluation tables (writes eval.json, rendered into the page)
+train/readme-tables.js   rewrites the README tables from eval.json
 test/sanity.js           kinematics, cameras, truth-sim, control, planner and envelope checks
 ```
 
-To rebuild from scratch: `node train/train.js` (about 5 minutes on a laptop),
-`node train/workspace.js`, `node train/eval.js` (about 5 minutes), then
-`node build.js`. Everything is deterministic via seeded RNGs.
+To rebuild from scratch: `node train/train.js` (about 45 minutes on a laptop),
+`node train/workspace.js`, `node train/eval.js` (about 6 minutes),
+`node train/readme-tables.js`, then `node build.js`. Everything is deterministic via seeded RNGs.
 
 Bolgaç Gülen, August 2026

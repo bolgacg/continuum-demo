@@ -21,11 +21,11 @@
    "condition": "nominal",
    "controller": "learned",
    "cells": [
-    "35/40",
-    "2.15 s",
-    "2.1 mm",
+    "36/40",
+    "2.02 s",
+    "1.7 mm",
     "40/40",
-    "1.93 s",
+    "2.00 s",
     "0.7 mm"
    ],
    "ood": "0% of steps"
@@ -49,12 +49,12 @@
    "condition": "payload",
    "controller": "learned",
    "cells": [
-    "34/40",
-    "2.32 s",
-    "2.8 mm",
-    "39/40",
-    "1.80 s",
-    "1.0 mm"
+    "36/40",
+    "2.03 s",
+    "1.7 mm",
+    "38/40",
+    "1.78 s",
+    "1.1 mm"
    ],
    "ood": "0% of steps"
   },
@@ -78,11 +78,11 @@
    "controller": "learned",
    "cells": [
     "30/40",
-    "2.53 s",
-    "4.4 mm",
+    "2.38 s",
+    "4.0 mm",
     "37/40",
-    "2.45 s",
-    "3.3 mm"
+    "2.25 s",
+    "3.4 mm"
    ],
    "ood": "0% of steps"
   },
@@ -105,11 +105,11 @@
    "condition": "payload + drift",
    "controller": "learned",
    "cells": [
-    "23/40",
-    "2.87 s",
-    "5.2 mm",
     "28/40",
-    "2.77 s",
+    "2.58 s",
+    "4.2 mm",
+    "33/40",
+    "2.92 s",
     "4.0 mm"
    ],
    "ood": "0% of steps"
@@ -133,11 +133,11 @@
    "condition": "nominal",
    "controller": "learned",
    "cells": [
-    "32/40",
-    "1.97 s",
-    "2.8 mm",
+    "37/40",
+    "1.87 s",
+    "8.6 mm",
     "40/40",
-    "2.05 s",
+    "1.98 s",
     "0.5 mm"
    ],
    "ood": "0% of steps"
@@ -162,11 +162,11 @@
    "controller": "learned",
    "cells": [
     "35/40",
-    "1.72 s",
-    "2.3 mm",
+    "1.77 s",
+    "1.8 mm",
     "40/40",
-    "2.03 s",
-    "0.6 mm"
+    "1.95 s",
+    "0.7 mm"
    ],
    "ood": "0% of steps"
   },
@@ -189,12 +189,12 @@
    "condition": "drift",
    "controller": "learned",
    "cells": [
-    "32/40",
-    "2.67 s",
-    "5.8 mm",
-    "39/40",
-    "2.28 s",
-    "2.6 mm"
+    "33/40",
+    "2.30 s",
+    "10.6 mm",
+    "40/40",
+    "2.35 s",
+    "2.5 mm"
    ],
    "ood": "0% of steps"
   },
@@ -217,12 +217,12 @@
    "condition": "payload + drift",
    "controller": "learned",
    "cells": [
-    "32/40",
-    "2.78 s",
-    "4.7 mm",
-    "37/40",
-    "2.35 s",
-    "3.0 mm"
+    "31/40",
+    "2.23 s",
+    "4.3 mm",
+    "38/40",
+    "2.47 s",
+    "2.9 mm"
    ],
    "ood": "0% of steps"
   }
