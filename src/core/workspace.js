@@ -157,7 +157,9 @@
       }
       return out;
     };
+    // closing removes sampling holes, then an opening removes isolated cells
     g = morph(morph(g, true), false);
+    g = morph(morph(g, false), true);
     return { min: GRID_BOX.min.slice(), res: o.res, n, bits: packBits(g) };
   }
   function packBits(u8) {

@@ -393,7 +393,7 @@
     if (o.naked) {
       ctx.fillStyle = 'rgba(232,234,230,0.6)';
       ctx.font = '10px ui-monospace, Menlo, Consolas, monospace';
-      ctx.fillText('tendons: white = slack, colour = fully shortened (transmitted displacement)', 14, hintY);
+      ctx.fillText('tendons: white = slack · robot colour = fully shortened', 14, hintY);
       hintY += 14;
     }
     if (o.hint) {
