@@ -1,55 +1,53 @@
-// Plan-then-track layer (version 2).
+// Plan-then-track layer.
 //
-// Version 1 closed the loop directly on the clicked pixel. That is a local
-// law: with one camera the image target is a ray, the robot has four degrees
-// of freedom for a two-dimensional error, and the pseudo-inverse picks the
-// bending plane greedily. From some starting poses it commits to the wrong
-// plane, hits the curvature limit and stalls with the tip short of the target.
-// No local feedback law fixes a basin problem, so version 2 adds the standard
-// remedy: a global plan on the model, tracked by the image loop.
+// The feedback laws are local: they descend the tip error from wherever the
+// robot is. With four degrees of freedom for a three-dimensional target and
+// curvature limits, a local law can still commit to a configuration from
+// which the target is not reachable within the limits, and stall. Whether
+// that happens often enough to matter with the 3D task is measured in
+// train/eval.js; the page reports the measurement. The remedy, when needed,
+// is the standard one: a global plan on the model, tracked by the loop.
 //
 //   1. Numerical inverse kinematics on the ideal PCC model: coarse search over
-//      a sampled forward-kinematics table for configurations whose projected
-//      tip lands near the target, pick the one nearest the current
-//      configuration, refine with damped Gauss-Newton on the pixel residual
-//      while staying inside the curvature limits.
+//      a sampled forward-kinematics table for configurations whose tip lands
+//      near the target, pick the one nearest the current configuration,
+//      refine with damped Gauss-Newton inside the curvature limits.
 //   2. A straight configuration-space path from the current configuration to
 //      the solution, at a fixed fraction of the actuator rate limit.
-//   3. The controller tracks the projected reference along that path with
+//   3. The controller tracks the reference point along that path with
 //      feed-forward (the path velocity) plus its own feedback law on the
-//      residual between the observed tip and the moving reference. When the
-//      path ends the reference is the clicked target and the loop is the
-//      plain version-1 law again.
+//      residual between the sensed tip and the moving reference. When the
+//      path ends the reference is the target and the loop is the direct law.
 //
 // The plan is only as good as the ideal model. Under payload the reference
-// path is not where the real tip goes, and the feedback term has to carry the
-// difference; that cost is measured, not hidden (see train/eval.js).
+// path is not where the real tip goes, and the feedback term carries the
+// difference; that cost is measured, not hidden.
 (function (CR) {
   'use strict';
-  const { pcc, ibvs } = CR;
+  const { pcc, ibvs, v3 } = CR;
 
-  const TABLE_N = 8000;      // sampled configurations for the coarse search
-  const CANDIDATE_PX = 14;   // coarse residual below which a sample is a candidate
-  const GN_ITERS = 12;       // Gauss-Newton refinement steps
+  const TABLE_N = 12000;     // sampled configurations for the coarse search
+  const CANDIDATE_R = 0.12;  // coarse residual (length units) below which a sample is a candidate
+  const REACH_TOL = 0.02;    // refined residual (2 mm) below which the target counts as reachable; well inside the 5 mm settle band
+  const GN_ITERS = 30;       // Gauss-Newton refinement steps
   const PATH_RATE = 0.6 * ibvs.RATE_MAX; // configuration speed along the plan
 
-  function sampleQ(rng) {
+  function sampleQ(rng, scale) {
     const q = [];
     for (let i = 0; i < pcc.NSEG; i++) {
       const a = rng() * 2 * Math.PI;
-      const k = Math.sqrt(rng()) * pcc.KMAX[i];
+      const k = Math.sqrt(rng()) * scale * pcc.KMAX[i];
       q.push(k * Math.cos(a), k * Math.sin(a));
     }
     return q;
   }
 
-  function buildTable(cam, seed) {
+  function buildTable(seed, scale) {
     const rng = CR.makeRng(seed || 11);
     const table = [];
-    while (table.length < TABLE_N) {
-      const q = sampleQ(rng);
-      const p = cam.project(pcc.tip3(q));
-      if (p) table.push({ q, px: [p[0], p[1]] });
+    for (let n = 0; n < TABLE_N; n++) {
+      const q = sampleQ(rng, scale);
+      table.push({ q, p: pcc.tip3(q) });
     }
     return table;
   }
@@ -60,50 +58,54 @@
     return Math.sqrt(s);
   }
 
-  // Damped Gauss-Newton on r(q) = project(tip(q)) - target, minimum-change
-  // from the coarse candidate, curvature limits enforced by projection.
-  function refine(q0, target, cam) {
+  // Damped Gauss-Newton on r(q) = tip(q) - target, minimum-change from the
+  // coarse candidate, curvature limits enforced by projection.
+  function refine(q0, target, scale) {
     let q = q0.slice();
     for (let it = 0; it < GN_ITERS; it++) {
-      const p = cam.project(pcc.tip3(q));
-      if (!p) break;
-      const r = [p[0] - target[0], p[1] - target[1]];
-      if (Math.hypot(r[0], r[1]) < 0.05) break;
-      const J = ibvs.idealJacobianPx(q, cam);
+      const r = v3.sub(pcc.tip3(q), target);
+      if (v3.norm(r) < 1e-5) break;
+      const J = ibvs.idealJacobian3(q);
       const P = ibvs.dampedPinv(J);
       const next = new Array(4);
-      for (let i = 0; i < 4; i++) next[i] = q[i] - (P[2 * i] * r[0] + P[2 * i + 1] * r[1]);
-      q = pcc.clampQ(next);
+      for (let i = 0; i < 4; i++) {
+        next[i] = q[i] - (P[3 * i] * r[0] + P[3 * i + 1] * r[1] + P[3 * i + 2] * r[2]);
+      }
+      q = pcc.clampQ(next, scale);
     }
     return q;
   }
 
-  function createPlanner(cam, opts) {
-    const table = buildTable(cam, opts && opts.seed);
+  // opts.limitScale < 1 builds a planner whose configurations stay inside a
+  // fraction of the curvature limits; used as an exact membership test for
+  // "is this target inside the population the ensemble was trained on"
+  // (training targets were tips at up to 90% of the limits).
+  function createPlanner(opts) {
+    const limitScale = (opts && opts.limitScale) || 1;
+    const table = buildTable(opts && opts.seed, limitScale);
 
     // Global IK: nearest-in-configuration among the samples that reach the
     // target, refined; if nothing reaches it, the sample with the smallest
-    // residual (closest reachable point, in the image).
+    // residual (closest reachable point).
     function solveIK(target, qNow) {
       let best = null, bestD = Infinity;
       let fallback = null, fallbackR = Infinity;
       for (const e of table) {
-        const r = Math.hypot(e.px[0] - target[0], e.px[1] - target[1]);
+        const r = v3.norm(v3.sub(e.p, target));
         if (r < fallbackR) { fallbackR = r; fallback = e; }
-        if (r < CANDIDATE_PX) {
+        if (r < CANDIDATE_R) {
           const d = qDist(e.q, qNow);
           if (d < bestD) { bestD = d; best = e; }
         }
       }
       const seed = best || fallback;
-      const q = refine(seed.q, target, cam);
-      const p = cam.project(pcc.tip3(q));
-      const residual = p ? Math.hypot(p[0] - target[0], p[1] - target[1]) : Infinity;
-      return { q, residual, reachable: !!best };
+      const q = refine(seed.q, target, limitScale);
+      const residual = v3.norm(v3.sub(pcc.tip3(q), target));
+      return { q, residual, reachable: residual < REACH_TOL };
     }
 
     // A plan: configuration path q(t) from qStart to qGoal at PATH_RATE, and
-    // the projected reference s_ref(t) with its feed-forward velocity.
+    // the reference point s_ref(t) with its feed-forward velocity.
     function plan(target, qStart) {
       const ik = solveIK(target, qStart);
       const dq = ik.q.map((v, i) => v - qStart[i]);
@@ -113,10 +115,10 @@
         target: target.slice(),
         qStart: qStart.slice(),
         qGoal: ik.q,
+        goalPoint: pcc.tip3(ik.q),
         ikResidual: ik.residual,
         reachable: ik.reachable,
         T,
-        // reference at time t since the plan started
         at(t) {
           if (t >= T || T <= 0) {
             return { qRef: ik.q, qDot: [0, 0, 0, 0], sRef: target.slice(), done: true };
@@ -124,19 +126,18 @@
           const a = t / T;
           const qRef = qStart.map((v, i) => v + dq[i] * a);
           const qDot = dq.map((v) => v / T);
-          const p = cam.project(pcc.tip3(qRef));
-          return { qRef, qDot, sRef: p ? [p[0], p[1]] : target.slice(), done: false };
+          return { qRef, qDot, sRef: pcc.tip3(qRef), done: false };
         },
       };
     }
 
-    return { plan, solveIK, table };
+    return { plan, solveIK, table, limitScale };
   }
 
-  // Wraps a version-1 controller (classical or learned) in the plan-then-
-  // track loop. newTarget() makes the plan from the controller's current
-  // configuration belief; step() advances along it. The wrapped controller's
-  // own law is unchanged; it just tracks a moving reference with feed-forward.
+  // Wraps a controller (classical or learned) in the plan-then-track loop.
+  // newTarget() makes the plan from the controller's current configuration
+  // belief; step() advances along it. The wrapped controller's own law is
+  // unchanged; it tracks a moving reference with feed-forward.
   function createTracked(inner, plannerObj, kind) {
     let plan = null, tPlan = 0;
     const qNow = () => (kind === 'classical' ? inner.qBelief() : inner.qCmd());
@@ -144,27 +145,25 @@
       name: inner.name + '+plan',
       inner,
       sigmaWarn: inner.sigmaWarn,
-      targetHull: inner.targetHull,
       reset(q0) { inner.reset(q0); plan = null; tPlan = 0; },
       qBelief: () => qNow(),
       qCmd: () => qNow(),
       plan: () => plan,
-      newTarget(targetPx) {
-        plan = plannerObj.plan(targetPx, qNow());
+      newTarget(target3) {
+        plan = plannerObj.plan(target3, qNow());
         tPlan = 0;
       },
-      step(markersPx, targetPx, dt, w, h) {
-        if (!plan || plan.target[0] !== targetPx[0] || plan.target[1] !== targetPx[1]) {
-          this.newTarget(targetPx);
+      step(markers3, target3, dt) {
+        if (!plan || plan.target[0] !== target3[0] || plan.target[1] !== target3[1] || plan.target[2] !== target3[2]) {
+          this.newTarget(target3);
         }
         tPlan += dt;
         const ref = plan.at(tPlan);
-        const tip = markersPx[3];
         if (kind === 'classical') {
-          const qCmd = inner.stepTrack([tip[0], tip[1]], ref.sRef, ref.qDot, dt);
+          const qCmd = inner.stepTrack(markers3[3], ref.sRef, ref.qDot, dt);
           return { qCmd, sRef: ref.sRef, tracking: !ref.done, plan };
         }
-        const out = inner.stepTrack(markersPx, ref.sRef, ref.qDot, dt, w, h, targetPx);
+        const out = inner.stepTrack(markers3, ref.sRef, ref.qDot, dt, target3);
         out.sRef = ref.sRef;
         out.tracking = !ref.done;
         out.plan = plan;
@@ -173,5 +172,28 @@
     };
   }
 
-  CR.planner = { createPlanner, createTracked, PATH_RATE, CANDIDATE_PX };
+  // Direct wrapper with the same interface (no plan), so the app and the
+  // evaluation can switch between the two without special cases.
+  function createDirect(inner, kind) {
+    return {
+      name: inner.name,
+      inner,
+      sigmaWarn: inner.sigmaWarn,
+      reset(q0) { inner.reset(q0); },
+      qBelief: () => (kind === 'classical' ? inner.qBelief() : inner.qCmd()),
+      qCmd: () => (kind === 'classical' ? inner.qBelief() : inner.qCmd()),
+      plan: () => null,
+      newTarget() {},
+      step(markers3, target3, dt) {
+        if (kind === 'classical') {
+          return { qCmd: inner.step(markers3[3], target3, dt), sRef: target3, tracking: false, plan: null };
+        }
+        const out = inner.step(markers3, target3, dt);
+        out.sRef = target3; out.tracking = false; out.plan = null;
+        return out;
+      },
+    };
+  }
+
+  CR.planner = { createPlanner, createTracked, createDirect, PATH_RATE, CANDIDATE_R, REACH_TOL };
 })(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));

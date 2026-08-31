@@ -38,7 +38,7 @@
     }
 
     function niceMax(v) {
-      const steps = [40, 60, 80, 120, 160, 240, 320, 480];
+      const steps = [20, 30, 40, 60, 80, 120, 160, 240, 320];
       for (const s of steps) if (v <= s) return s;
       return Math.ceil(v / 100) * 100;
     }
@@ -67,7 +67,7 @@
         return;
       }
       const xs = xScale(W);
-      let maxE = 40;
+      let maxE = 30;
       for (const s of samples) maxE = Math.max(maxE, s.errC || 0, s.errL || 0);
       const yMax = niceMax(maxE * 1.05);
       const yPx = (v) => PAD.t + (1 - v / yMax) * (H - PAD.t - PAD.b);
@@ -92,8 +92,8 @@
         ctx.fillText(t.toFixed(0) + 's', xs.px(t) - 6, H - 6);
       }
 
-      // settle band hairline at 6 px
-      const ySettle = yPx(6);
+      // settle band hairline at 5 mm
+      const ySettle = yPx(5);
       ctx.strokeStyle = BASELINE;
       ctx.setLineDash([3, 4]);
       ctx.beginPath(); ctx.moveTo(PAD.l, ySettle); ctx.lineTo(W - PAD.r, ySettle); ctx.stroke();
@@ -214,8 +214,8 @@
         tooltipEl.style.top = ev.clientY + 14 + 'px';
         tooltipEl.textContent =
           't        ' + best.t.toFixed(1) + ' s\n' +
-          'classical ' + (best.errC != null ? best.errC.toFixed(1) + ' px' : '–') + '\n' +
-          'learned   ' + (best.errL != null ? best.errL.toFixed(1) + ' px' : '–') + '\n' +
+          'classical ' + (best.errC != null ? best.errC.toFixed(1) + ' mm' : '–') + '\n' +
+          'learned   ' + (best.errL != null ? best.errL.toFixed(1) + ' mm' : '–') + '\n' +
           'σ         ' + (best.sigma != null ? best.sigma.toFixed(3) : '–');
       }
     }

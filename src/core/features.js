@@ -1,21 +1,24 @@
-// Image-feature vector shared by the learned controller's training and
-// runtime. Inputs are pixels only: 4 marker positions + tip-to-target error,
-// normalized by image size. 10 numbers total.
+// Feature vector shared by the learned controller's training and runtime.
+// Inputs are the sensing layer's output only: the four triangulated marker
+// positions (12 numbers) and the tip-to-target error (3 numbers). Units are
+// the simulator's normalized length units; standardization happens in
+// training and is stored with the weights.
 (function (CR) {
   'use strict';
 
-  const DIM = 10;
+  const DIM = 15;
 
-  function build(markersPx, targetPx, w, h) {
+  function build(markers3, target3) {
     const x = new Array(DIM);
-    const sx = w / 2, sy = h / 2;
     for (let i = 0; i < 4; i++) {
-      x[2 * i] = (markersPx[i][0] - sx) / sx;
-      x[2 * i + 1] = (markersPx[i][1] - sy) / sy;
+      x[3 * i] = markers3[i][0];
+      x[3 * i + 1] = markers3[i][1];
+      x[3 * i + 2] = markers3[i][2];
     }
-    const tip = markersPx[3];
-    x[8] = (tip[0] - targetPx[0]) / sx;
-    x[9] = (tip[1] - targetPx[1]) / sy;
+    const tip = markers3[3];
+    x[12] = tip[0] - target3[0];
+    x[13] = tip[1] - target3[1];
+    x[14] = tip[2] - target3[2];
     return x;
   }
 

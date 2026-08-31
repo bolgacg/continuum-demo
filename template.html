@@ -13,119 +13,74 @@
     --muted: #898781;
     --hairline: #e1e0d9;
     --border: rgba(11, 11, 11, 0.10);
-    --classical: #eb6834;      /* series slot 2, light */
-    --learned: #2a78d6;        /* series slot 1, light */
-    --feed: #151614;           /* camera feed surface */
+    --classical: #eb6834;
+    --learned: #2a78d6;
+    --feed: #151614;
     --feed-ink: #8a8f88;
-    --classical-feed: #d95926; /* series steps for the dark feed */
-    --learned-feed: #3987e5;
     --warning: #fab219;
-    --good: #0ca30c;
     --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { color-scheme: light; }
-  body {
-    background: var(--page);
-    color: var(--ink);
-    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
-  }
+  body { background: var(--page); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
   .wrap { max-width: 984px; margin: 0 auto; padding: 40px 20px 56px; }
 
-  /* header */
-  .eyebrow {
-    font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em;
-    text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
-  }
+  .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
   h1 { font-size: 27px; font-weight: 650; letter-spacing: -0.015em; margin-bottom: 12px; }
   .intro { max-width: 760px; color: var(--ink-2); }
   .intro b { color: var(--ink); font-weight: 600; }
-
-  h2 {
-    font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--ink-2); margin: 36px 0 12px;
-    display: flex; align-items: center; gap: 12px;
-  }
+  h2 { font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); margin: 36px 0 12px; display: flex; align-items: center; gap: 12px; }
   h2::after { content: ""; flex: 1; height: 1px; background: var(--hairline); }
 
-  /* camera feeds */
   .feeds { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px; }
   .feed-card { min-width: 0; }
-  .feed-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
-  .feed-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; position: relative; top: 0px; }
+  .feed-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
   .feed-title { font-weight: 600; font-size: 14.5px; }
   .feed-sub { color: var(--muted); font-size: 12.5px; }
-  .feed-frame {
-    position: relative; border-radius: 10px; overflow: hidden;
-    background: var(--feed); border: 1px solid var(--border);
-  }
-  .feed-frame canvas { display: block; width: 100%; height: auto; cursor: crosshair; }
-  .readouts {
-    display: flex; gap: 18px; padding: 8px 2px 0; font-family: var(--mono);
-    font-size: 12px; color: var(--ink-2); flex-wrap: wrap;
-  }
+  .feed-frame { position: relative; border-radius: 10px; overflow: hidden; background: var(--feed); border: 1px solid var(--border); }
+  .feed-frame canvas { display: block; width: 100%; height: auto; cursor: crosshair; touch-action: none; }
+  .feed-tools { display: flex; align-items: center; gap: 10px; padding: 8px 2px 0; font-size: 12.5px; color: var(--ink-2); flex-wrap: wrap; }
+  .feed-tools .grow { flex: 1; min-width: 120px; }
+  .feed-tools input[type=range] { width: 100%; accent-color: var(--ink-2); }
+  .feed-tools .val { font-family: var(--mono); color: var(--ink); min-width: 62px; text-align: right; }
+  .preset { font: 600 12px/1 system-ui, sans-serif; color: var(--ink-2); background: var(--surface); border: 1px solid var(--hairline); border-radius: 6px; padding: 6px 9px; cursor: pointer; }
+  .preset:hover { background: #f0efec; color: var(--ink); }
+
+  .readouts { display: flex; gap: 28px; padding: 14px 2px 0; font-family: var(--mono); font-size: 12px; color: var(--ink-2); flex-wrap: wrap; }
+  .readouts .grp { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .readouts .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 2px; }
+  .readouts .name { font: 600 13px system-ui, sans-serif; color: var(--ink); }
   .readouts .val { color: var(--ink); }
   .readouts .lbl { color: var(--muted); }
 
-  /* controls */
-  .controls {
-    display: flex; align-items: center; gap: 22px; flex-wrap: wrap;
-    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-    padding: 12px 16px; margin-top: 20px;
-  }
+  .controls { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; margin-top: 20px; }
   .hint { color: var(--ink-2); font-size: 13.5px; margin-right: auto; }
   .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: 13.5px; }
   .switch input { position: absolute; opacity: 0; pointer-events: none; }
-  .knob {
-    width: 34px; height: 20px; border-radius: 10px; background: var(--hairline);
-    position: relative; transition: background 0.15s; flex: none;
-  }
-  .knob::after {
-    content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px;
-    border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.25);
-    transition: left 0.15s;
-  }
+  .knob { width: 34px; height: 20px; border-radius: 10px; background: var(--hairline); position: relative; transition: background 0.15s; flex: none; }
+  .knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.25); transition: left 0.15s; }
   .switch input:checked + .knob { background: var(--ink-2); }
   .switch input:checked + .knob::after { left: 17px; }
   .switch input:focus-visible + .knob { outline: 2px solid var(--learned); outline-offset: 2px; }
-  button {
-    font: 600 13.5px/1 system-ui, sans-serif; color: var(--ink);
-    background: var(--surface); border: 1px solid var(--ink-2); border-radius: 8px;
-    padding: 9px 14px; cursor: pointer;
-  }
+  button { font: 600 13.5px/1 system-ui, sans-serif; color: var(--ink); background: var(--surface); border: 1px solid var(--ink-2); border-radius: 8px; padding: 9px 14px; cursor: pointer; }
   button:hover { background: #f0efec; }
   button:focus-visible { outline: 2px solid var(--learned); outline-offset: 2px; }
   button.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
   button.primary:hover { background: #2a2a28; }
-  .demo-note {
-    font-family: var(--mono); font-size: 12.5px; color: var(--ink-2);
-    padding: 8px 2px 0; min-height: 26px;
-  }
+  .demo-note { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); padding: 8px 2px 0; min-height: 26px; }
 
-  /* validation */
-  .panel {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-    padding: 16px 16px 10px; position: relative;
-  }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 16px 10px; position: relative; }
   .panel + .panel { margin-top: 14px; }
   .panel-title { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
   .panel-sub { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
   .legend { position: absolute; top: 16px; right: 16px; display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); }
   .legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 5px; position: relative; top: -2px; }
   .panel canvas { display: block; width: 100%; height: auto; }
-  #tooltip {
-    position: fixed; pointer-events: none; z-index: 10; display: none;
-    background: var(--ink); color: #fff; font-family: var(--mono); font-size: 11.5px;
-    padding: 6px 9px; border-radius: 6px; white-space: pre; line-height: 1.5;
-  }
+  #tooltip { position: fixed; pointer-events: none; z-index: 10; display: none; background: var(--ink); color: #fff; font-family: var(--mono); font-size: 11.5px; padding: 6px 9px; border-radius: 6px; white-space: pre; line-height: 1.5; }
 
   .table-scroll { overflow-x: auto; }
   table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 13px; }
-  th {
-    text-align: left; font-weight: 600; font-size: 11.5px; letter-spacing: 0.05em;
-    text-transform: uppercase; color: var(--muted); padding: 6px 10px;
-    border-bottom: 1px solid var(--hairline);
-  }
+  th { text-align: left; font-weight: 600; font-size: 11.5px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--hairline); }
   td { padding: 6px 10px; border-bottom: 1px solid var(--hairline); font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
   td:first-child, th:first-child { padding-left: 2px; }
   tr:last-child td { border-bottom: none; }
@@ -133,91 +88,99 @@
   .col-c { color: var(--classical); font-weight: 600; }
   .col-l { color: var(--learned); font-weight: 600; }
   #empty-row td { color: var(--muted); font-family: system-ui, sans-serif; font-size: 13px; }
+  .static-table td.hi { color: var(--ink); }
 
-  /* notes */
   .notes { max-width: 780px; color: var(--ink-2); font-size: 14px; }
   .notes li { margin: 7px 0 7px 18px; }
-  footer {
-    margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--hairline);
-    color: var(--muted); font-size: 12.5px; display: flex; gap: 16px; flex-wrap: wrap;
-  }
-  /* version 2: change log and the frozen version 1 */
   .change { max-width: 800px; margin: 18px 0 26px; }
   .change h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
-  .change .q { font-style: italic; color: var(--ink-2); margin-bottom: 8px; }
   .change p { color: var(--ink-2); font-size: 14px; margin: 6px 0; }
   .change p b { color: var(--ink); font-weight: 600; }
-  .change .kv { font-family: var(--mono); font-size: 12.5px; color: var(--ink); margin-top: 6px; }
-  .static-table td { color: var(--ink-2); }
-  .static-table td.v2 { color: var(--ink); }
+  .change .kv { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
   .v1-note { max-width: 800px; color: var(--ink-2); font-size: 14px; margin-bottom: 14px; }
   .v1-frame { width: 100%; height: 1720px; border: 1px solid var(--border); border-radius: 10px; background: var(--page); }
+  footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--hairline); color: var(--muted); font-size: 12.5px; display: flex; gap: 16px; flex-wrap: wrap; }
   @media (max-width: 780px) {
     .feeds { grid-template-columns: 1fr; }
     .legend { position: static; margin-bottom: 8px; }
     .v1-frame { height: 2400px; }
   }
-  @media (prefers-reduced-motion: reduce) {
-    .knob, .knob::after { transition: none; }
-  }
+  @media (prefers-reduced-motion: reduce) { .knob, .knob::after { transition: none; } }
 </style>
 </head>
 <body>
 <div class="wrap">
 
   <header>
-    <div class="eyebrow">simulation study · single file · no libraries · version 2</div>
+    <div class="eyebrow">simulation study · single file · no libraries · version 3</div>
     <h1>Continuum robot visual servoing, two ways</h1>
     <p class="intro">
-      A two-segment tendon-driven continuum robot chases clicked targets using nothing but
-      marker pixels from one fixed camera. The left controller uses the textbook constant
-      curvature model. The right one learned from the simulator's less polite physics
-      (backlash, sag, drift) and <b>reports its own uncertainty</b>. Built over a weekend as a
-      study of the problems in the SDU Robotics job ad on sensing and AI-based control of
-      continuum surgical robots. It is a toy, and the gap between the idealized model and the
+      A two-segment tendon-driven continuum robot chases 3D targets using nothing but
+      four markers seen by two fixed cameras. The orange controller uses the textbook constant
+      curvature model. The blue one learned from the simulator's less polite physics
+      (backlash, sag, drift) and <b>reports its own uncertainty</b>. Built as a study of the
+      problems in the SDU Robotics job ad on sensing and AI-based control of continuum
+      surgical robots. It is a toy, and the gap between the idealized model and the
       simulated truth is the point.
     </p>
     <p class="intro" style="margin-top:10px">
-      <b>Version 2</b> answers three questions a robotics researcher asked about the first
-      version: where the boundary came from, whether the geometry varies, and how the inverse
-      kinematics was solved. What changed, why version 1 did it the other way, and what each
-      change cost are <a href="#changes">listed below the demo</a>. Version 1 is kept
-      unchanged at the <a href="#v1">bottom of the page</a>.
+      <b>Version 3.</b> The first version showed a 3D simulation through one 2D camera and
+      gave the controllers a pixel to chase. Most of what looked odd about it (markers that
+      seemed to slide, a tube that changed thickness, a robot that reached a target from one
+      pose and not another) came from that, and the task itself was under-specified: with one
+      camera an image point is a line in space. This version fixes the sensing, the task and the
+      views, and says what each change cost. <a href="#changes">What changed, and why</a>.
+      Version 1 is kept unchanged at the <a href="#v1">bottom of the page</a>.
     </p>
   </header>
 
   <div class="feeds">
     <div class="feed-card">
       <div class="feed-head">
-        <span class="feed-dot" style="background:var(--classical)"></span>
-        <span class="feed-title">Classical IBVS</span>
-        <span class="feed-sub">ideal PCC Jacobian · plan, then track</span>
+        <span class="feed-title">Inspector</span>
+        <span class="feed-sub">orbit view · drag to orbit · click to place a target on the plane</span>
       </div>
-      <div class="feed-frame"><canvas id="feed-classical" width="460" height="345"></canvas></div>
-      <div class="readouts">
-        <span><span class="lbl">error</span> <span class="val" id="ro-c-err">–</span></span>
-        <span><span class="lbl">settle</span> <span class="val" id="ro-c-settle">–</span></span>
-        <span><span class="lbl">state</span> <span class="val" id="ro-c-state">idle</span></span>
+      <div class="feed-frame"><canvas id="view-inspector" width="460" height="345"></canvas></div>
+      <div class="feed-tools">
+        <span>View</span>
+        <button class="preset" data-preset="iso">Isometric</button>
+        <button class="preset" data-preset="side">Side (CAM 01)</button>
+        <button class="preset" data-preset="top">Top (CAM 02)</button>
       </div>
     </div>
     <div class="feed-card">
       <div class="feed-head">
-        <span class="feed-dot" style="background:var(--learned)"></span>
-        <span class="feed-title">Learned ensemble</span>
-        <span class="feed-sub">5 small networks · same plan, then track</span>
+        <span class="feed-title">CAM 01 · side sensor</span>
+        <span class="feed-sub">one of the two cameras the controllers see through · drag the plane to set the target height</span>
       </div>
-      <div class="feed-frame"><canvas id="feed-learned" width="460" height="345"></canvas></div>
-      <div class="readouts">
-        <span><span class="lbl">error</span> <span class="val" id="ro-l-err">–</span></span>
-        <span><span class="lbl">settle</span> <span class="val" id="ro-l-settle">–</span></span>
-        <span><span class="lbl">ensemble σ</span> <span class="val" id="ro-l-sigma">–</span></span>
-        <span><span class="lbl">state</span> <span class="val" id="ro-l-state">idle</span></span>
+      <div class="feed-frame"><canvas id="view-side" width="460" height="345"></canvas></div>
+      <div class="feed-tools">
+        <label for="plane-y">Target plane height</label>
+        <span class="grow"><input type="range" id="plane-y" min="-1.5" max="1.5" step="0.01" value="-0.1"></span>
+        <span class="val" id="plane-y-val">-10 mm</span>
       </div>
     </div>
   </div>
 
+  <div class="readouts">
+    <span class="grp">
+      <span class="dot" style="background:var(--classical)"></span><span class="name">Classical</span>
+      <span><span class="lbl">error</span> <span class="val" id="ro-c-err">–</span></span>
+      <span><span class="lbl">settle</span> <span class="val" id="ro-c-settle">–</span></span>
+      <span><span class="lbl">state</span> <span class="val" id="ro-c-state">idle</span></span>
+    </span>
+    <span class="grp">
+      <span class="dot" style="background:var(--learned)"></span><span class="name">Learned ensemble</span>
+      <span><span class="lbl">error</span> <span class="val" id="ro-l-err">–</span></span>
+      <span><span class="lbl">settle</span> <span class="val" id="ro-l-settle">–</span></span>
+      <span><span class="lbl">ensemble σ</span> <span class="val" id="ro-l-sigma">–</span></span>
+      <span><span class="lbl">state</span> <span class="val" id="ro-l-state">idle</span></span>
+    </span>
+  </div>
+
   <div class="controls">
-    <span class="hint">Click either camera view to set a shared target.</span>
+    <span class="hint">Both robots share the target, the disturbances and the planner.</span>
+    <label class="switch"><input type="checkbox" id="tgl-plan" checked><span class="knob"></span>Plan first</label>
     <label class="switch"><input type="checkbox" id="tgl-payload"><span class="knob"></span>Payload</label>
     <label class="switch"><input type="checkbox" id="tgl-drift"><span class="knob"></span>Tendon drift</label>
     <button id="btn-reset">Reset</button>
@@ -228,8 +191,8 @@
   <h2>Validation</h2>
 
   <div class="panel">
-    <div class="panel-title">Tip pixel error over time</div>
-    <div class="panel-sub">Distance from tip marker to target, both controllers, same targets and disturbances. Hairline: 6 px settle band.</div>
+    <div class="panel-title">Tip error over time</div>
+    <div class="panel-sub">Distance from the triangulated tip to the target, both controllers, same targets and disturbances. Hairline: 5 mm settle band. Display convention: the model is dimensionless; lengths are shown as if the robot were 180 mm long.</div>
     <div class="legend">
       <span><i style="background:var(--classical)"></i>classical</span>
       <span><i style="background:var(--learned)"></i>learned</span>
@@ -245,7 +208,7 @@
 
   <div class="panel">
     <div class="panel-title">Trials</div>
-    <div class="panel-sub">One row per clicked target, 6 s window. Settle: first time the error stays under 6 px for 0.8 s. Steady state: mean error over the final second.</div>
+    <div class="panel-sub">One row per target, 6 s window. Settle: first time the error stays under 5 mm for 0.8 s. Steady state: mean error over the final second.</div>
     <div class="table-scroll">
     <table>
       <thead>
@@ -256,37 +219,33 @@
         </tr>
       </thead>
       <tbody id="trial-rows">
-        <tr id="empty-row"><td colspan="6">No trials yet. Click a target above.</td></tr>
+        <tr id="empty-row"><td colspan="6">No trials yet. Click in the inspector to place a target.</td></tr>
       </tbody>
     </table>
     </div>
   </div>
 
-  <h2 id="changes">What changed in version 2, and why</h2>
+  <h2 id="changes">What changed in version 3, and why</h2>
 
   <div class="change">
-    <h3>1. Where did the irregular boundary come from?</h3>
-    <p class="q">Version 1 drew one dashed outline and described it as "the convex hull of the targets used in training, which is close to the reachable set".</p>
-    <p><b>What it was.</b> Exactly that: the convex hull, in image pixels, of the 900 targets the ensemble saw during training. Those targets were tip positions of random configurations at up to 90% of the curvature limit, projected through the camera. It looks irregular because it is the perspective silhouette of a three-dimensional workspace, not because anything was drawn by hand. It was never the reachable set: the ideal model reaches about 35 px further on the side where the robot curls back on itself, and past the top and bottom of the frame.</p>
-    <p><b>Why version 1 did it.</b> The out-of-distribution test needed the training envelope, so that is what got drawn, and the actual workspace was never computed. A weekend shortcut, not a modelling decision, and "close to" hid the gap on exactly the side you notice when you push the robot around.</p>
-    <p><b>Version 2.</b> The solid grey outline is the reachable set of the ideal model at its curvature limits: 200,000 sampled configurations projected through the camera, rasterized, boundary traced. The dashed blue outline is the training envelope, kept because the ensemble's warning is still about that. The trial table now says <span class="kv">beyond reach</span> or <span class="kv">outside envelope</span>, which are different things.</p>
+    <h3>1. Most of what version 1 showed was an artifact of the view</h3>
+    <p>Version 1 simulated the robot in three dimensions and showed it through one perspective camera placed off to the side. A segment bending toward that camera projected long, one bending away projected short, and the tube was drawn wider when nearer, as any camera would. The robot's geometry never changed: two segments of constant arc length (1.0 and 0.8 in normalized units), one constant-curvature arc per segment, four markers at fixed arc positions, no joints, no cross-section. In 3D the chord between neighbouring markers varies by under 4%; in that image it ran from about 1 px to about 60 px. Version 1 also drew the tube tapered from base to tip purely for looks, which suggested a geometry that was never modelled. A reader had no way to tell any of this from the page. Version 3 shows the same simulation from an orbiting inspector with side, top and isometric presets, draws a constant radius, and lets the side sensor's own view be compared with the others.</p>
   </div>
 
   <div class="change">
-    <h3>2. How is the robot modelled? Is the distance between the joints variable?</h3>
-    <p class="q">On screen the four markers drift apart and together as the robot moves, which reads like a chain with variable link lengths, or a structure whose geometry varies along its length.</p>
-    <p><b>What it is.</b> Piecewise constant curvature, two segments of fixed arc length (1.0 and 0.8 in normalized units), one curvature vector per segment, three tendons per segment with a linear tendon-to-curvature map. There are no joints. The four markers sit at fixed arc positions: the middle and end of each segment. The model has no cross-section at all. The "truth" simulator keeps the same shape family and adds lag, backlash, load-dependent sag, inter-segment coupling and drift on top; its curvature is biased, not redistributed along the arc, which is a real limitation relative to a rod model.</p>
-    <p><b>Why it looked variable.</b> One oblique camera, chosen so gravity sag is visible in the image, foreshortens a body that bends in three dimensions. In 3D the chord between neighbouring markers varies by under 4% (it is the chord of a fixed-length arc); in the image it varies from about 1 px to about 60 px. Version 1 also drew the tube tapered from base to tip, purely for looks, which suggested a geometry that was never modelled. The failure was presentation, and it was mine.</p>
-    <p><b>Version 2.</b> The tube is drawn with one constant radius. Each feed carries a plan-view inset: the same robot from above, at true scale, with the base, the markers, the camera, and the viewing ray of the clicked target. Neither controller sees the inset. A pixel target is a ray, not a point, and the inset makes that visible.</p>
+    <h3>2. A point target was a line target</h3>
+    <p>Version 1's controllers chased a clicked pixel. With one camera an image point fixes two of the tip's three coordinates; the third, depth along the viewing ray, was never observed and never asked for, so the loop accepted any point on that ray as success. In visual-servoing terms this is the known limitation of a single point feature, and the remedies are more features, a second view, or a depth constraint. For a surgical robot the task is a point, not a line, so the task definition was wrong for the application, and it also produced the path dependence a reader could provoke: a target pixel is reachable from several bending planes, and a local law picked one greedily. Version 3 uses two fixed, calibrated cameras (CAM 01 side, CAM 02 top), triangulates the four markers to 3D points, and gives both controllers the same 3D estimate and a 3D target. A click in the inspector still gives a ray; the height plane in the side view turns the ray back into a point. The cameras add no noise, so the triangulation is exact; the page does not pretend otherwise.</p>
   </div>
 
   <div class="change">
-    <h3>3. How was the inverse kinematics solved?</h3>
-    <p class="q">It was not, in version 1.</p>
-    <p><b>What version 1 did.</b> Both controllers were local laws in image space. The classical one differentiates the ideal model numerically for a 2×4 pixel Jacobian at its believed configuration, takes a damped pseudo-inverse, and integrates the resulting curvature velocity; the learned one regresses the same kind of gain matrix from pixels. Four degrees of freedom serve a two-dimensional error, the pseudo-inverse resolves the redundancy by minimum norm, and nothing chooses the bending plane deliberately. With one camera the image target is a ray, so from some poses the loop commits to the wrong bending plane, hits the curvature limit and stalls with the tip short of the target. From the rest pose, a target at the right-hand edge of the workspace is reached by neither version 1 controller; the same target is reached from other poses. That is the path dependence you can provoke by stretching the robot out and bringing it back.</p>
-    <p><b>Why.</b> Standard image-based visual servoing is exactly this local law, and I evaluated it only on interior targets, so the failure basin was never measured. Adding a null-space term (curvature minimization, or a pull toward a good configuration) was tried and moves the numbers only slightly, because the problem is the basin, not the redundancy resolution.</p>
-    <p><b>Version 2.</b> Plan, then track. When a target is set, the inverse kinematics is solved numerically on the ideal model: a coarse global search over 8,000 sampled configurations for those whose projected tip lands near the target, the one nearest the current configuration is refined by damped Gauss-Newton inside the curvature limits, and if nothing reaches the target the closest reachable point is used. A straight configuration-space path to that solution runs at 60% of the actuator rate limit, and each controller tracks the projected reference along it with feed-forward plus its own feedback law. When the path ends, the reference is the clicked target and the loop is the version 1 law again. The plan is only as good as the ideal model; under payload the reference is not where the real tip goes and the feedback term carries the difference. The same planner sits above both controllers, so the comparison between them stays about the feedback law.</p>
-    <p><b>Measured.</b> Headless, 40 trials per cell, same protocol as the trial table (<span class="kv">node train/eval.js</span>). Edge targets are tips at 95 to 100% of the curvature limit; interior targets are the version 1 protocol.</p>
+    <h3>3. The boundary</h3>
+    <p>Version 1's dashed outline was the convex hull of the 900 targets the ensemble had been trained on, projected into the image, described as "close to the reachable set". It looked irregular because it was the perspective silhouette of a three-dimensional workspace, sampled finitely, and it was not the reachable set: the model reaches about 35 px further where the robot curls back on itself. Version 3 draws the reachable set itself, in 3D: 200,000 sampled configurations at the curvature limits, their tip positions binned by direction around the cloud's centroid, the largest radius per bin kept, holes filled, smoothed, then scaled up by the smallest factor that keeps 99.9% of the samples inside. That is the translucent envelope in both views. It is an outer envelope, generous where the true set is concave; whether a specific target is reachable is decided by the planner's inverse kinematics, and the trial table says <span class="kv">beyond reach</span> when it is not.</p>
+  </div>
+
+  <div class="change">
+    <h3>4. Inverse kinematics</h3>
+    <p><b>Version 1 solved none.</b> Both controllers were local laws: the classical one a damped pseudo-inverse of the ideal model's pixel Jacobian at its believed configuration, integrated into a curvature command; the learned one a regressed gain matrix of the same shape. Nothing chose a configuration deliberately. <b>Version 3</b> keeps local feedback laws on the 3D error (the classical one now differentiates the ideal model for a 3×4 Jacobian; the ensemble was retrained on triangulated markers and a 3D error) and adds a planning layer above both: when a target is set, the inverse kinematics is solved numerically on the ideal model (a coarse global search over 12,000 sampled configurations for those whose tip lands near the target, the one nearest the current configuration refined by damped Gauss-Newton inside the curvature limits; if nothing reaches the target, the closest reachable point), a straight configuration path runs to it at 60% of the actuator rate limit, and each controller tracks that reference with feed-forward plus its own feedback. When the path ends, the loop is the direct law again. The plan is only as good as the ideal model; under payload the feedback term carries the difference.</p>
+    <p><b>Is the plan needed with a 3D target?</b> Measured, not assumed: the "Plan first" switch above turns it off, and the table below reports both. With the direct law, the classical controller sent to a workspace-edge target from the rest pose still ends stalled in the wrong bending plane, 115 mm short; the scripted demo opens with exactly that. Over random edge targets (table below) the direct classical law settles 23 of 40 and stalls about 25 mm short on average; under the plan it settles 40 of 40. The learned law is a different story: about 30% of those edge targets lie outside the population it was trained on, it flags them and drops its own authority to 0.3x, and that costs settle rate, 22 of 40 direct and 35 of 40 under the plan, with small steady-state errors when it does settle. Warning and slowing down is the designed behaviour; its price is in the table. On interior targets nothing is flagged, the plan costs the classical controller about 0.4 s of settle time, and the learned controller is marginally faster with it. A null-space term (curvature minimization, or a pull toward a good configuration) was tried before the planner and moved the numbers only slightly, because the failure is a basin, not the redundancy resolution.</p>
   </div>
 
   <div class="change">
@@ -295,40 +254,13 @@
   </div>
 
   <div class="panel">
-    <div class="panel-title">Edge targets, version 1 against version 2</div>
-    <div class="panel-sub">Settled out of 40, median settle time, mean steady-state error.</div>
+    <div class="panel-title">Direct law against plan-then-track, 40 trials per cell</div>
+    <div class="panel-sub">Headless, same protocol as the trial table (<span class="kv">node train/eval.js</span>). Edge targets: tips at 95 to 100% of the curvature limit. Interior targets: up to 85%. Settled out of 40, median settle time, mean steady-state error.</div>
     <div class="table-scroll">
-    <table class="static-table">
-      <thead><tr><th>Condition</th><th>Controller</th><th>v1 settled</th><th>v1 settle</th><th>v1 steady</th><th>v2 settled</th><th>v2 settle</th><th>v2 steady</th></tr></thead>
+    <table class="static-table" id="eval-table">
+      <thead><tr><th>Targets</th><th>Condition</th><th>Controller</th><th>direct settled</th><th>direct settle</th><th>direct steady</th><th>planned settled</th><th>planned settle</th><th>planned steady</th></tr></thead>
       <tbody>
-        <tr><td>nominal</td><td>classical</td><td>33/40</td><td>1.33 s</td><td>5.8 px</td><td class="v2">40/40</td><td class="v2">1.83 s</td><td class="v2">0.2 px</td></tr>
-        <tr><td>nominal</td><td>learned</td><td>31/40</td><td>1.50 s</td><td>10.6 px</td><td class="v2">39/40</td><td class="v2">1.58 s</td><td class="v2">2.4 px</td></tr>
-        <tr><td>payload</td><td>classical</td><td>29/40</td><td>1.80 s</td><td>7.9 px</td><td class="v2">35/40</td><td class="v2">1.93 s</td><td class="v2">3.3 px</td></tr>
-        <tr><td>payload</td><td>learned</td><td>30/40</td><td>1.47 s</td><td>9.9 px</td><td class="v2">34/40</td><td class="v2">1.67 s</td><td class="v2">8.9 px</td></tr>
-        <tr><td>drift</td><td>classical</td><td>30/40</td><td>1.37 s</td><td>9.6 px</td><td class="v2">33/40</td><td class="v2">2.08 s</td><td class="v2">3.9 px</td></tr>
-        <tr><td>drift</td><td>learned</td><td>29/40</td><td>1.63 s</td><td>13.9 px</td><td class="v2">31/40</td><td class="v2">1.83 s</td><td class="v2">6.6 px</td></tr>
-        <tr><td>payload + drift</td><td>classical</td><td>30/40</td><td>2.00 s</td><td>9.9 px</td><td class="v2">31/40</td><td class="v2">1.98 s</td><td class="v2">6.3 px</td></tr>
-        <tr><td>payload + drift</td><td>learned</td><td>29/40</td><td>1.45 s</td><td>11.1 px</td><td class="v2">31/40</td><td class="v2">1.98 s</td><td class="v2">10.5 px</td></tr>
-      </tbody>
-    </table>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="panel-title">Interior targets, the cost of planning</div>
-    <div class="panel-sub">Same protocol. Version 2 settles as often or more, and slower: the plan paces the motion at 60% of the rate limit so the feedback term keeps authority.</div>
-    <div class="table-scroll">
-    <table class="static-table">
-      <thead><tr><th>Condition</th><th>Controller</th><th>v1 settled</th><th>v1 settle</th><th>v1 steady</th><th>v2 settled</th><th>v2 settle</th><th>v2 steady</th></tr></thead>
-      <tbody>
-        <tr><td>nominal</td><td>classical</td><td>40/40</td><td>1.20 s</td><td>0.2 px</td><td class="v2">40/40</td><td class="v2">1.62 s</td><td class="v2">0.3 px</td></tr>
-        <tr><td>nominal</td><td>learned</td><td>38/40</td><td>1.42 s</td><td>1.0 px</td><td class="v2">40/40</td><td class="v2">1.65 s</td><td class="v2">0.4 px</td></tr>
-        <tr><td>payload</td><td>classical</td><td>39/40</td><td>1.80 s</td><td>1.4 px</td><td class="v2">40/40</td><td class="v2">1.87 s</td><td class="v2">1.2 px</td></tr>
-        <tr><td>payload</td><td>learned</td><td>40/40</td><td>1.47 s</td><td>0.3 px</td><td class="v2">40/40</td><td class="v2">1.67 s</td><td class="v2">0.4 px</td></tr>
-        <tr><td>drift</td><td>classical</td><td>38/40</td><td>1.37 s</td><td>3.2 px</td><td class="v2">38/40</td><td class="v2">1.83 s</td><td class="v2">3.4 px</td></tr>
-        <tr><td>drift</td><td>learned</td><td>37/40</td><td>1.72 s</td><td>2.9 px</td><td class="v2">38/40</td><td class="v2">1.72 s</td><td class="v2">4.1 px</td></tr>
-        <tr><td>payload + drift</td><td>classical</td><td>37/40</td><td>1.87 s</td><td>3.5 px</td><td class="v2">37/40</td><td class="v2">2.47 s</td><td class="v2">3.5 px</td></tr>
-        <tr><td>payload + drift</td><td>learned</td><td>39/40</td><td>1.52 s</td><td>2.7 px</td><td class="v2">37/40</td><td class="v2">1.98 s</td><td class="v2">3.1 px</td></tr>
+        <!--EVAL_ROWS-->
       </tbody>
     </table>
     </div>
@@ -336,25 +268,25 @@
 
   <h2>What this is, and is not</h2>
   <ul class="notes">
-    <li>Both controllers see exactly the same thing: four marker pixels from one fixed camera. Neither reads simulator state, and neither sees the plan-view inset.</li>
-    <li>The two robots are identical simulator instances with the same random seed, so the side-by-side comparison is fair. Both sit under the same planner.</li>
-    <li>The robot's geometry is fixed: constant arc lengths, constant curvature per segment, markers at fixed arc positions. What varies on screen is perspective.</li>
-    <li>The "truth" simulator is phenomenological: constant curvature plus actuator lag, tendon backlash, gravity droop, inter-segment coupling and optional tendon drift. It is not rod mechanics, and nothing here claims to be.</li>
-    <li>The learned controller imitates a training-time expert that could see the simulator's true Jacobian. At run time it has no such access. When a request leaves the training envelope it says so and lowers its own gain instead of pretending; the plan's feed-forward is not scaled, because it does not come from the networks.</li>
-    <li>Solid grey outline: reachable set of the ideal model. Dashed blue outline: the ensemble's training envelope. The truth robot never leaves the first; the second is where the ensemble's warning starts.</li>
-    <li>This page is the whole system: simulator, planner, controllers, pretrained weights and the precomputed outline in one file. Training, outline and evaluation scripts are in the repository.</li>
+    <li>Both controllers see exactly the same thing: four markers triangulated from two fixed cameras. Neither reads simulator state. The inspector is for you, not for them.</li>
+    <li>The two robots are identical simulator instances with the same random seed, so the comparison is fair. Both sit under the same planner, and the planner can be switched off for both.</li>
+    <li>The robot's geometry is fixed: constant arc lengths, constant curvature per segment, markers at fixed arc positions. What changed on screen in version 1 was perspective.</li>
+    <li>The "truth" simulator is phenomenological: constant curvature plus actuator lag, tendon backlash, gravity droop, inter-segment coupling and optional tendon drift. Its curvature is biased by load, not redistributed along the arc, so it stays in the constant-curvature shape family; a rod model would be the next step, and the model mismatch here is milder than a real tendon-driven robot's.</li>
+    <li>The learned controller imitates a training-time expert that could see the simulator's true Jacobian. At run time it has no such access. Three signals, all set from data, flag extrapolation: the target outside the population its training targets were drawn from (tips at up to 90% of the curvature limits, decided by the same inverse kinematics with the limits scaled to 90%), the feature vector far from the training set, or the five networks disagreeing. Any of them and it says so and lowers its own gain; the plan's feed-forward is not scaled, because it does not come from the networks.</li>
+    <li>The translucent envelope is the outer boundary of the ideal model's reachable set. The truth robot never leaves it; the planner decides reachability point by point.</li>
+    <li>The model is dimensionless. Millimetres on this page are a display convention (robot length 180 mm), not a claim about any device.</li>
+    <li>This page is the whole system: simulator, sensing, planner, controllers, pretrained weights and the precomputed envelope in one file. Training, envelope and evaluation scripts are in the repository.</li>
   </ul>
 
   <h2 id="v1">Version 1, as published on 17 August</h2>
   <p class="v1-note">
     Kept byte for byte and running below in its own frame (also at <a href="v1.html">v1.html</a>).
-    To see the difference, click a target near the right-hand end of its dashed outline from the
-    rest pose, then do the same above.
+    Its single oblique camera and pixel target are the things this version replaced.
   </p>
   <iframe class="v1-frame" src="v1.html" title="Version 1 of the demo, unchanged" loading="lazy"></iframe>
 
   <footer>
-    <span>Bolgaç Gülen · August 2026 · version 2, 31 August</span>
+    <span>Bolgaç Gülen · August 2026 · version 3</span>
     <span>Simulation only. No hardware, no clinical anything.</span>
     <span id="fps"></span>
   </footer>

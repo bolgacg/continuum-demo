@@ -1,118 +1,137 @@
-// Reachable workspace of the ideal model, as the camera sees it.
+// Reachable workspace of the ideal model, in 3D.
 //
-// Version 1 drew the convex hull of the training targets and called it
-// "close to the reachable set". Version 2 draws the reachable set itself:
-// sample the configuration space densely up to the curvature limits, project
-// every tip through the camera, rasterize the hits, and trace the boundary of
-// the occupied region. It is a silhouette of a 3D workspace under a
-// perspective camera, so it is irregular by nature; nothing about it is
-// hand-drawn. The truth simulator clamps its effective curvature to the same
-// limits, so the real tip never leaves this outline (checked in test/sanity.js).
+// Sample the configuration space densely up to the curvature limits, keep the
+// tip positions, and describe their outer boundary as a radial envelope
+// around the cloud's centroid: for each direction (theta, phi) the largest
+// tip radius seen in that angular bin, hole-filled, smoothed, and then scaled
+// up by the smallest factor that keeps 99.9% of the samples inside. The
+// result is a closed, smooth surface, the "dome" drawn in the inspector. It
+// is an outer envelope: the reachable set is a solid inside it, and where the
+// true set is concave the envelope is generous. Reachability of a specific
+// target is decided by the planner's inverse kinematics, not by this surface.
 (function (CR) {
   'use strict';
-  const { pcc } = CR;
+  const { pcc, v3 } = CR;
 
-  function reachableOutline(cam, opts) {
-    const o = Object.assign({ samples: 200000, cell: 3, pad: 80, seed: 3, tol: 1.5 }, opts || {});
+  function reachableVolume(opts) {
+    const o = Object.assign({ samples: 200000, nt: 36, np: 72, seed: 3, keep: 0.999, smooth: 2, scale: 1.0 }, opts || {});
     const rng = CR.makeRng(o.seed);
-    const x0 = -o.pad, y0 = -o.pad;
-    const nx = Math.ceil((cam.w + 2 * o.pad) / o.cell), ny = Math.ceil((cam.h + 2 * o.pad) / o.cell);
-    const grid = new Uint8Array(nx * ny);
+    const pts = new Float64Array(o.samples * 3);
+    const c = [0, 0, 0];
     for (let n = 0; n < o.samples; n++) {
       const q = [];
       for (let i = 0; i < pcc.NSEG; i++) {
-        const a = rng() * 2 * Math.PI, k = Math.sqrt(rng()) * pcc.KMAX[i];
+        const a = rng() * 2 * Math.PI, k = Math.sqrt(rng()) * o.scale * pcc.KMAX[i];
         q.push(k * Math.cos(a), k * Math.sin(a));
       }
-      const p = cam.project(pcc.tip3(q));
-      if (!p) continue;
-      const ix = Math.floor((p[0] - x0) / o.cell), iy = Math.floor((p[1] - y0) / o.cell);
-      if (ix >= 0 && ix < nx && iy >= 0 && iy < ny) grid[iy * nx + ix] = 1;
+      const p = pcc.tip3(q);
+      pts[3 * n] = p[0]; pts[3 * n + 1] = p[1]; pts[3 * n + 2] = p[2];
+      c[0] += p[0] / o.samples; c[1] += p[1] / o.samples; c[2] += p[2] / o.samples;
     }
-    // morphological closing (one cell) removes sampling holes near the edge
-    const closed = close(grid, nx, ny);
-    const contour = traceOuter(closed, nx, ny);
-    const px = contour.map(([ix, iy]) => [x0 + (ix + 0.5) * o.cell, y0 + (iy + 0.5) * o.cell]);
-    return simplify(px, o.tol);
-  }
-
-  function close(g, nx, ny) {
-    const d = new Uint8Array(nx * ny), e = new Uint8Array(nx * ny);
-    const at = (a, x, y) => (x < 0 || y < 0 || x >= nx || y >= ny ? 0 : a[y * nx + x]);
-    for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
-      let v = 0;
-      for (let dy = -1; dy <= 1 && !v; dy++) for (let dx = -1; dx <= 1; dx++) if (at(g, x + dx, y + dy)) { v = 1; break; }
-      d[y * nx + x] = v;
+    const { nt, np } = o;
+    const rmax = new Float64Array(nt * np);
+    const binOf = (p) => {
+      const d = v3.sub(p, c), r = v3.norm(d);
+      const th = Math.acos(Math.max(-1, Math.min(1, d[1] / (r || 1e-9))));
+      const ph = Math.atan2(d[2], d[0]);
+      const i = Math.min(nt - 1, Math.floor((th / Math.PI) * nt));
+      const j = ((Math.floor(((ph + Math.PI) / (2 * Math.PI)) * np) % np) + np) % np;
+      return { i, j, r };
+    };
+    for (let n = 0; n < o.samples; n++) {
+      const b = binOf([pts[3 * n], pts[3 * n + 1], pts[3 * n + 2]]);
+      if (b.r > rmax[b.i * np + b.j]) rmax[b.i * np + b.j] = b.r;
     }
-    for (let y = 0; y < ny; y++) for (let x = 0; x < nx; x++) {
-      let v = 1;
-      for (let dy = -1; dy <= 1 && v; dy++) for (let dx = -1; dx <= 1; dx++) if (!at(d, x + dx, y + dy)) { v = 0; break; }
-      e[y * nx + x] = v;
-    }
-    return e;
-  }
-
-  // Moore-neighbour boundary trace of the component containing the topmost,
-  // leftmost filled cell (the outer contour of the largest region in practice).
-  function traceOuter(g, nx, ny) {
-    const at = (x, y) => (x < 0 || y < 0 || x >= nx || y >= ny ? 0 : g[y * nx + x]);
-    let sx = -1, sy = -1;
-    for (let y = 0; y < ny && sx < 0; y++) for (let x = 0; x < nx; x++) if (g[y * nx + x]) { sx = x; sy = y; break; }
-    if (sx < 0) return [];
-    // 8 neighbours, clockwise starting from west
-    const N = [[-1, 0], [-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1]];
-    const out = [[sx, sy]];
-    let cx = sx, cy = sy, back = 0; // index of the neighbour we came from (west)
-    for (let guard = 0; guard < nx * ny * 4; guard++) {
-      let found = -1;
-      for (let k = 0; k < 8; k++) {
-        const idx = (back + k) % 8;
-        if (at(cx + N[idx][0], cy + N[idx][1])) { found = idx; break; }
+    // hole filling: empty bins take the mean of their filled neighbours
+    let grid = Float64Array.from(rmax);
+    for (let pass = 0; pass < 8; pass++) {
+      const next = Float64Array.from(grid);
+      let holes = 0;
+      for (let i = 0; i < nt; i++) for (let j = 0; j < np; j++) {
+        if (grid[i * np + j] > 0) continue;
+        let s = 0, k = 0;
+        for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+          const ii = i + di, jj = ((j + dj) % np + np) % np;
+          if (ii < 0 || ii >= nt) continue;
+          const v = grid[ii * np + jj];
+          if (v > 0) { s += v; k++; }
+        }
+        if (k) next[i * np + j] = s / k; else holes++;
       }
-      if (found < 0) break; // isolated cell
-      cx += N[found][0]; cy += N[found][1];
-      back = (found + 5) % 8; // start next search from the cell behind us
-      if (cx === sx && cy === sy) break;
-      out.push([cx, cy]);
+      grid = next;
+      if (!holes) break;
     }
-    return out;
+    // smoothing: box filter, wrap in phi, clamp in theta
+    for (let pass = 0; pass < o.smooth; pass++) {
+      const next = new Float64Array(nt * np);
+      for (let i = 0; i < nt; i++) for (let j = 0; j < np; j++) {
+        let s = 0, k = 0;
+        for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+          const ii = i + di, jj = ((j + dj) % np + np) % np;
+          if (ii < 0 || ii >= nt) continue;
+          s += grid[ii * np + jj]; k++;
+        }
+        next[i * np + j] = s / k;
+      }
+      grid = next;
+    }
+    // containment margin: scale so that `keep` of the samples are inside
+    const ratios = new Float64Array(o.samples);
+    for (let n = 0; n < o.samples; n++) {
+      const b = binOf([pts[3 * n], pts[3 * n + 1], pts[3 * n + 2]]);
+      ratios[n] = b.r / grid[b.i * np + b.j];
+    }
+    ratios.sort();
+    const scale = Math.max(1, ratios[Math.floor(o.keep * (o.samples - 1))]);
+    for (let k = 0; k < grid.length; k++) grid[k] *= scale;
+    let inside = 0;
+    for (let n = 0; n < o.samples; n++) if (ratios[n] <= scale) inside++;
+    return {
+      center: c.map((v) => Math.round(v * 1e4) / 1e4),
+      nt, np,
+      r: Array.from(grid, (v) => Math.round(v * 1e4) / 1e4),
+      meta: { samples: o.samples, curvatureFraction: o.scale, marginScale: Math.round(scale * 1e4) / 1e4, insideFrac: inside / o.samples },
+    };
   }
 
-  // Douglas-Peucker on a closed polygon (split at the farthest point from
-  // the first vertex so both halves are open chains).
-  function simplify(poly, tol) {
-    if (poly.length < 8) return poly;
-    let far = 0, fd = -1;
-    for (let i = 1; i < poly.length; i++) {
-      const d = Math.hypot(poly[i][0] - poly[0][0], poly[i][1] - poly[0][1]);
-      if (d > fd) { fd = d; far = i; }
-    }
-    const a = dp(poly.slice(0, far + 1), tol);
-    const b = dp(poly.slice(far).concat([poly[0]]), tol);
-    return a.slice(0, -1).concat(b.slice(0, -1));
-  }
-  function dp(pts, tol) {
-    if (pts.length < 3) return pts;
-    const [ax, ay] = pts[0], [bx, by] = pts[pts.length - 1];
-    const L = Math.hypot(bx - ax, by - ay) || 1e-9;
-    let idx = 0, dmax = 0;
-    for (let i = 1; i < pts.length - 1; i++) {
-      const d = Math.abs((bx - ax) * (ay - pts[i][1]) - (ax - pts[i][0]) * (by - ay)) / L;
-      if (d > dmax) { dmax = d; idx = i; }
-    }
-    if (dmax <= tol) return [pts[0], pts[pts.length - 1]];
-    return dp(pts.slice(0, idx + 1), tol).slice(0, -1).concat(dp(pts.slice(idx), tol));
+  // Direction for bin centres (theta from +y, phi about +y measured from +x
+  // toward +z, matching binOf above).
+  function dir(theta, phi) {
+    const st = Math.sin(theta);
+    return [st * Math.cos(phi), Math.cos(theta), st * Math.sin(phi)];
   }
 
-  function pointInPolygon(p, poly) {
-    let inside = false;
-    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-      const a = poly[i], b = poly[j];
-      if ((a[1] > p[1]) !== (b[1] > p[1]) &&
-          p[0] < ((b[0] - a[0]) * (p[1] - a[1])) / (b[1] - a[1]) + a[0]) inside = !inside;
+  // Vertex grid of the envelope surface: rows theta (with pole rows added),
+  // columns phi; each entry a world point.
+  function envelopeMesh(vol) {
+    const { nt, np, r, center } = vol;
+    const rows = [];
+    const poleR = (i) => { let s = 0; for (let j = 0; j < np; j++) s += r[i * np + j]; return s / np; };
+    rows.push(new Array(np).fill(0).map(() => v3.add(center, v3.scale([0, 1, 0], poleR(0)))));
+    for (let i = 0; i < nt; i++) {
+      const th = ((i + 0.5) / nt) * Math.PI;
+      const row = [];
+      for (let j = 0; j < np; j++) {
+        const ph = ((j + 0.5) / np) * 2 * Math.PI - Math.PI;
+        row.push(v3.add(center, v3.scale(dir(th, ph), r[i * np + j])));
+      }
+      rows.push(row);
     }
-    return inside;
+    rows.push(new Array(np).fill(0).map(() => v3.add(center, v3.scale([0, -1, 0], poleR(nt - 1)))));
+    return rows;
   }
 
-  CR.workspace = { reachableOutline, pointInPolygon };
+  // Is a world point inside the envelope (nearest-bin radial test)?
+  function insideEnvelope(vol, p) {
+    const { nt, np, r, center } = vol;
+    const d = v3.sub(p, center), rr = v3.norm(d);
+    if (rr < 1e-9) return true;
+    const th = Math.acos(Math.max(-1, Math.min(1, d[1] / rr)));
+    const ph = Math.atan2(d[2], d[0]);
+    const i = Math.min(nt - 1, Math.floor((th / Math.PI) * nt));
+    const j = ((Math.floor(((ph + Math.PI) / (2 * Math.PI)) * np) % np) + np) % np;
+    return rr <= r[i * np + j];
+  }
+
+  CR.workspace = { reachableVolume, envelopeMesh, insideEnvelope };
 })(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));

@@ -193,5 +193,27 @@
     return J;
   }
 
-  CR.truth = { PARAMS: P, createTruth, truthJacobianPx, applyStatic };
+  // Privileged 3x4 Jacobian of the tip position wrt command, through the
+  // static truth map at the transmitted curvature. Training-time expert only.
+  function truthJacobian3(sim) {
+    const h = 1e-3;
+    const J = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+    const qOp = new Array(4);
+    for (let i = 0; i < NSEG; i++) {
+      const t = [0, 1, 2].map((j) => sim.play[3 * i + j] + sim.drift[3 * i + j]);
+      const k = kFromTendons(t, i);
+      qOp[2 * i] = k[0];
+      qOp[2 * i + 1] = k[1];
+    }
+    for (let c = 0; c < 4; c++) {
+      const qp = qOp.slice(); qp[c] += h;
+      const qm = qOp.slice(); qm[c] -= h;
+      const pp = pcc.tip3(applyStatic(qp, sim.payload));
+      const pm = pcc.tip3(applyStatic(qm, sim.payload));
+      for (let r = 0; r < 3; r++) J[r][c] = (pp[r] - pm[r]) / (2 * h);
+    }
+    return J;
+  }
+
+  CR.truth = { PARAMS: P, createTruth, truthJacobianPx, truthJacobian3, applyStatic };
 })(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));

@@ -1,0 +1,230 @@
+{
+ "date": "2026-08-31",
+ "trials": 40,
+ "rows": [
+  {
+   "targets": "interior",
+   "condition": "nominal",
+   "controller": "classical",
+   "cells": [
+    "36/40",
+    "1.48 s",
+    "2.9 mm",
+    "39/40",
+    "1.85 s",
+    "0.5 mm"
+   ],
+   "ood": "–"
+  },
+  {
+   "targets": "interior",
+   "condition": "nominal",
+   "controller": "learned",
+   "cells": [
+    "40/40",
+    "2.00 s",
+    "0.9 mm",
+    "40/40",
+    "1.83 s",
+    "0.7 mm"
+   ],
+   "ood": "0% of steps"
+  },
+  {
+   "targets": "interior",
+   "condition": "payload",
+   "controller": "classical",
+   "cells": [
+    "35/40",
+    "1.97 s",
+    "5.3 mm",
+    "38/40",
+    "2.15 s",
+    "1.9 mm"
+   ],
+   "ood": "–"
+  },
+  {
+   "targets": "interior",
+   "condition": "payload",
+   "controller": "learned",
+   "cells": [
+    "36/40",
+    "1.88 s",
+    "4.6 mm",
+    "39/40",
+    "1.80 s",
+    "1.5 mm"
+   ],
+   "ood": "0% of steps"
+  },
+  {
+   "targets": "interior",
+   "condition": "drift",
+   "controller": "classical",
+   "cells": [
+    "34/40",
+    "2.02 s",
+    "5.2 mm",
+    "39/40",
+    "2.10 s",
+    "3.3 mm"
+   ],
+   "ood": "–"
+  },
+  {
+   "targets": "interior",
+   "condition": "drift",
+   "controller": "learned",
+   "cells": [
+    "36/40",
+    "2.43 s",
+    "3.3 mm",
+    "39/40",
+    "2.13 s",
+    "3.1 mm"
+   ],
+   "ood": "0% of steps"
+  },
+  {
+   "targets": "interior",
+   "condition": "payload + drift",
+   "controller": "classical",
+   "cells": [
+    "31/40",
+    "2.43 s",
+    "6.5 mm",
+    "38/40",
+    "2.77 s",
+    "3.5 mm"
+   ],
+   "ood": "–"
+  },
+  {
+   "targets": "interior",
+   "condition": "payload + drift",
+   "controller": "learned",
+   "cells": [
+    "34/40",
+    "2.47 s",
+    "4.0 mm",
+    "38/40",
+    "2.12 s",
+    "3.1 mm"
+   ],
+   "ood": "0% of steps"
+  },
+  {
+   "targets": "edge",
+   "condition": "nominal",
+   "controller": "classical",
+   "cells": [
+    "23/40",
+    "1.50 s",
+    "24.8 mm",
+    "40/40",
+    "2.00 s",
+    "0.4 mm"
+   ],
+   "ood": "–"
+  },
+  {
+   "targets": "edge",
+   "condition": "nominal",
+   "controller": "learned",
+   "cells": [
+    "22/40",
+    "1.73 s",
+    "9.3 mm",
+    "35/40",
+    "1.88 s",
+    "1.6 mm"
+   ],
+   "ood": "30% of steps"
+  },
+  {
+   "targets": "edge",
+   "condition": "payload",
+   "controller": "classical",
+   "cells": [
+    "22/40",
+    "2.20 s",
+    "28.2 mm",
+    "35/40",
+    "2.02 s",
+    "2.2 mm"
+   ],
+   "ood": "–"
+  },
+  {
+   "targets": "edge",
+   "condition": "payload",
+   "controller": "learned",
+   "cells": [
+    "16/40",
+    "2.10 s",
+    "15.6 mm",
+    "30/40",
+    "1.97 s",
+    "3.0 mm"
+   ],
+   "ood": "30% of steps"
+  },
+  {
+   "targets": "edge",
+   "condition": "drift",
+   "controller": "classical",
+   "cells": [
+    "18/40",
+    "1.58 s",
+    "27.6 mm",
+    "37/40",
+    "2.10 s",
+    "3.2 mm"
+   ],
+   "ood": "–"
+  },
+  {
+   "targets": "edge",
+   "condition": "drift",
+   "controller": "learned",
+   "cells": [
+    "21/40",
+    "2.33 s",
+    "14.0 mm",
+    "36/40",
+    "2.28 s",
+    "3.3 mm"
+   ],
+   "ood": "30% of steps"
+  },
+  {
+   "targets": "edge",
+   "condition": "payload + drift",
+   "controller": "classical",
+   "cells": [
+    "21/40",
+    "2.47 s",
+    "28.8 mm",
+    "35/40",
+    "2.12 s",
+    "3.7 mm"
+   ],
+   "ood": "–"
+  },
+  {
+   "targets": "edge",
+   "condition": "payload + drift",
+   "controller": "learned",
+   "cells": [
+    "16/40",
+    "2.37 s",
+    "16.0 mm",
+    "32/40",
+    "2.43 s",
+    "4.1 mm"
+   ],
+   "ood": "30% of steps"
+  }
+ ]
+}

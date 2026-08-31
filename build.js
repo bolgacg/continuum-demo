@@ -7,7 +7,7 @@ const path = require('path');
 const ROOT = __dirname;
 const CORE = ['math3', 'pcc', 'camera', 'truth', 'ibvs', 'features', 'mlp', 'learned', 'planner', 'workspace']
   .map((f) => path.join(ROOT, 'src', 'core', f + '.js'));
-const UI = ['render', 'chart', 'main']
+const UI = ['scene', 'chart', 'main']
   .map((f) => path.join(ROOT, 'src', 'ui', f + '.js'));
 
 function bundle(files) {
@@ -26,6 +26,19 @@ const workspace = fs.existsSync(wsPath) ? fs.readFileSync(wsPath, 'utf8').trim()
 
 let html = fs.readFileSync(path.join(ROOT, 'template.html'), 'utf8');
 html = html.replace('/*__WEIGHTS__*/', 'const CR_WEIGHTS = ' + weights + ';\nconst CR_WORKSPACE = ' + workspace + ';');
+const evalPath = path.join(ROOT, 'train', 'eval.json');
+if (fs.existsSync(evalPath)) {
+  const ev = JSON.parse(fs.readFileSync(evalPath, 'utf8'));
+  const rows = ev.rows.map((r) => {
+    const c = r.cells;
+    return '        <tr><td>' + r.targets + '</td><td>' + r.condition + '</td><td>' + r.controller + '</td>' +
+      '<td>' + c[0] + '</td><td>' + c[1] + '</td><td>' + c[2] + '</td>' +
+      '<td class="hi">' + c[3] + '</td><td class="hi">' + c[4] + '</td><td class="hi">' + c[5] + '</td></tr>';
+  }).join('\n');
+  html = html.replace('<!--EVAL_ROWS-->', rows);
+} else {
+  html = html.replace('<!--EVAL_ROWS-->', '        <tr><td colspan="9">evaluation table not generated (run node train/eval.js)</td></tr>');
+}
 html = html.replace('/*__CORE__*/', bundle(CORE));
 html = html.replace('/*__UI__*/', bundle(UI));
 

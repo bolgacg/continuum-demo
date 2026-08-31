@@ -1,82 +1,62 @@
-// App wiring: two truth-sim instances (same seed, same disturbances), one per
-// controller, a shared clicked target, trial metrics, charts and the
-// scripted demo sequence. Version 2: both controllers sit under the same
-// plan-then-track layer (src/core/planner.js); the feeds draw the ideal
-// model's reachable outline and a plan-view inset.
+// App wiring (version 3): two truth-sim instances (same seed, same
+// disturbances), one per controller, drawn together in two views: an orbiting
+// inspector and the side sensor feed. Sensing is two fixed cameras and
+// triangulation; the task is a 3D point placed by ray (click) x plane
+// (height set in the side view). Both controllers sit under the same
+// plan-then-track layer, which can be switched off to see the direct laws.
 (function (CR) {
   'use strict';
-  const { pcc, camera, truth, ibvs, learned, render, chart, workspace } = CR;
+  const { pcc, camera, truth, ibvs, learned, scene, chart, workspace, v3 } = CR;
   const plannerMod = CR.planner;
 
   const W = 460, H = 345;
   const DT = 1 / 60;
   const SEED = 2026;
   const Q0 = [0.5, 0.1, -0.35, 0.3];
-  const SETTLE_PX = 6, SETTLE_HOLD = 0.8, TRIAL_S = 6;
-  const FAN_HORIZON = 0.35; // seconds of predicted motion shown by the fan
+  const MM = 100;                 // display convention: 1 length unit = 100 mm
+  const SETTLE_U = 0.05;          // 5 mm settle band
+  const SETTLE_HOLD = 0.8, TRIAL_S = 6;
+  const FAN_HORIZON = 0.35;       // seconds of predicted motion shown by the fan
+  const PLANE_MIN = -1.5, PLANE_MAX = 1.5;
 
   const $ = (id) => document.getElementById(id);
-  const cam = camera.defaultCamera(W, H);
+  const camSide = camera.sideCamera(W, H);
+  const camTop = camera.topCamera(W, H);
 
-  // ---- fallback outline (ideal-model reachable set) for the dashed HUD
-  // polygon; when weights are embedded the training-target hull wins ----
-  function computeHull() {
-    const rng = CR.makeRng(7);
-    const pts = [];
-    for (let n = 0; n < 3000; n++) {
-      const q = [];
-      for (let i = 0; i < 2; i++) {
-        const a = rng() * 2 * Math.PI, k = Math.sqrt(rng()) * pcc.KMAX[i];
-        q.push(k * Math.cos(a), k * Math.sin(a));
-      }
-      const p = cam.project(pcc.tip3(q));
-      if (p) pts.push([p[0], p[1]]);
-    }
-    pts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
-    const lower = [], upper = [];
-    for (const p of pts) {
-      while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
-      lower.push(p);
-    }
-    for (let i = pts.length - 1; i >= 0; i--) {
-      const p = pts[i];
-      while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
-      upper.push(p);
-    }
-    return lower.slice(0, -1).concat(upper.slice(0, -1));
-  }
-  // ---- controllers, planner, outlines ----
+  // ---- controllers, planner, envelope ----
   const weights = typeof CR_WEIGHTS !== 'undefined' ? CR_WEIGHTS : null;
-  const learnedBase = learned.createLearned(weights);
-  const planner = plannerMod.createPlanner(cam);
-  const classicalCtrl = plannerMod.createTracked(ibvs.createClassical(cam), planner, 'classical');
-  const learnedCtrl = learnedBase ? plannerMod.createTracked(learnedBase, planner, 'learned') : null;
+  const ws = (typeof CR_WORKSPACE !== 'undefined' && CR_WORKSPACE && CR_WORKSPACE.reach) ? CR_WORKSPACE : null;
+  const volume = ws ? ws.reach : workspace.reachableVolume({ samples: 60000 });
+  const planner = plannerMod.createPlanner();
+  // membership test for the ensemble's training population: the same IK with
+  // the curvature limits scaled to 90%
+  const trainIK = plannerMod.createPlanner({ limitScale: 0.9, seed: 13 });
+  const classicalInner = ibvs.createClassical();
+  const learnedInner = learned.createLearned(weights, { targetTest: (p) => trainIK.solveIK(p, [0, 0, 0, 0]).reachable });
+  const mesh = workspace.envelopeMesh(volume);
 
-  // reachable outline of the ideal model (embedded by build.js, else computed)
-  const outline = (typeof CR_WORKSPACE !== 'undefined' && CR_WORKSPACE && CR_WORKSPACE.outline)
-    ? CR_WORKSPACE.outline : workspace.reachableOutline(cam);
-  // training-target envelope of the ensemble
-  const hull = learnedBase ? learnedBase.targetHull : computeHull();
-  const hullCentroid = hull.reduce((a, p) => [a[0] + p[0] / hull.length, a[1] + p[1] / hull.length], [0, 0]);
-
-  const views = {
+  const robots = {
     classical: {
-      canvas: $('feed-classical'),
-      sim: truth.createTruth(SEED),
-      ctrl: classicalCtrl,
-      accent: '#d95926',
-      label: 'CAM 01 · CLASSICAL',
-      lastOut: null,
+      key: 'classical', sim: truth.createTruth(SEED), inner: classicalInner,
+      tracked: plannerMod.createTracked(classicalInner, planner, 'classical'),
+      direct: plannerMod.createDirect(classicalInner, 'classical'),
+      accent: '#d95926', lastOut: null,
     },
-    learned: {
-      canvas: $('feed-learned'),
-      sim: truth.createTruth(SEED),
-      ctrl: learnedCtrl,
-      accent: '#3987e5',
-      label: 'CAM 01 · LEARNED',
-      lastOut: null,
-    },
+    learned: learnedInner ? {
+      key: 'learned', sim: truth.createTruth(SEED), inner: learnedInner,
+      tracked: plannerMod.createTracked(learnedInner, planner, 'learned'),
+      direct: plannerMod.createDirect(learnedInner, 'learned'),
+      accent: '#3987e5', lastOut: null,
+    } : null,
+  };
+  const robotList = Object.values(robots).filter(Boolean);
+  let usePlan = true;
+  const ctrlOf = (r) => (usePlan ? r.tracked : r.direct);
+
+  // ---- views ----
+  const views = {
+    inspector: { canvas: $('view-inspector') },
+    side: { canvas: $('view-side') },
   };
   for (const v of Object.values(views)) {
     const dpr = window.devicePixelRatio || 1;
@@ -84,44 +64,59 @@
     v.ctx = v.canvas.getContext('2d');
     v.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
+  const orbit = Object.assign({}, camera.PRESETS.iso);
+  const orbitCam = () => camera.orbitCamera(orbit.az, orbit.el, W, H);
+  function presetName() {
+    const near = (p) => Math.abs(orbit.az - p.az) < 1e-6 && Math.abs(orbit.el - p.el) < 1e-6;
+    if (near(camera.PRESETS.side)) return '= CAM 01 SIDE SENSOR';
+    if (near(camera.PRESETS.top)) return '= CAM 02 TOP SENSOR';
+    if (near(camera.PRESETS.iso)) return 'ISOMETRIC';
+    return 'az ' + ((orbit.az * 180) / Math.PI).toFixed(0) + '° el ' + ((orbit.el * 180) / Math.PI).toFixed(0) + '°';
+  }
+
   // ---- charts ----
   const charts = chart.createCharts($('chart-err'), $('chart-sigma'), $('tooltip'));
-  if (learnedCtrl && learnedCtrl.sigmaWarn) charts.setSigmaThreshold(learnedCtrl.sigmaWarn);
+  if (learnedInner && learnedInner.sigmaWarn) charts.setSigmaThreshold(learnedInner.sigmaWarn);
   let lastSample = null;
   const origPush = charts.push;
   charts.push = (s) => { lastSample = s; origPush(s); };
 
   // ---- state ----
   let t = 0;
-  let target = null;
+  let target = null;          // 3D point
+  let lastRay = null;         // {origin, dir} of the click that placed the target
+  let rayNote = '';
+  let planeY = camera.CENTER[1];
   let payloadTarget = 0, driftOn = false;
   let trial = null;
   let trialCount = 0;
-  let demo = null; // {steps, idx, tStart}
+  let demo = null;
   let hadClick = false;
+  let planeDrag = false;
 
-  function condString(px) {
+  function condString(reachable) {
     const c = [];
     if (payloadTarget > 0) c.push('payload');
     if (driftOn) c.push('drift');
-    if (px && !workspace.pointInPolygon(px, outline)) c.push('beyond reach');
-    else if (px && !inHull(px)) c.push('outside envelope');
+    if (!usePlan) c.push('no plan');
+    if (!reachable) c.push('beyond reach');
     return c.length ? c.join(' + ') : 'nominal';
   }
 
-  function startTrial(px) {
-    target = px;
-    for (const v of Object.values(views)) if (v.ctrl) v.ctrl.newTarget(px);
+  function startTrial(p3) {
+    target = p3.slice();
+    for (const r of robotList) ctrlOf(r).newTarget(target);
+    const ik = planner.solveIK(target, robots.classical.inner.qBelief());
     trial = {
       id: ++trialCount,
       t0: t,
-      cond: condString(px),
+      cond: condString(ik.reachable),
       per: {
         classical: { bandEnter: null, settle: null, tail: [] },
         learned: { bandEnter: null, settle: null, tail: [] },
       },
     };
-    for (const key of Object.keys(views)) setState(key, 'servoing');
+    for (const r of robotList) setState(r.key, 'servoing');
   }
 
   function abandonTrial() { trial = null; }
@@ -131,7 +126,7 @@
     const fmt = (p) => {
       const settle = p.settle != null ? p.settle.toFixed(2) + ' s' : 'dns';
       const ss = p.tail.length
-        ? (p.tail.reduce((a, b) => a + b, 0) / p.tail.length).toFixed(1) + ' px' : '–';
+        ? (p.tail.reduce((a, b) => a + b, 0) / p.tail.length * MM).toFixed(1) + ' mm' : '–';
       return [settle, ss];
     };
     const [cs, css] = fmt(trial.per.classical);
@@ -139,16 +134,17 @@
     row.innerHTML =
       '<td>' + trial.id + '</td><td class="cond">' + trial.cond + '</td>' +
       '<td>' + cs + '</td><td>' + css + '</td>' +
-      '<td>' + (views.learned.ctrl ? ls : '–') + '</td><td>' + (views.learned.ctrl ? lss : '–') + '</td>';
+      '<td>' + (robots.learned ? ls : '–') + '</td><td>' + (robots.learned ? lss : '–') + '</td>';
     const body = $('trial-rows');
     const empty = $('empty-row');
     if (empty) empty.remove();
     body.insertBefore(row, body.firstChild);
     while (body.children.length > 10) body.removeChild(body.lastChild);
-    for (const key of Object.keys(views)) {
-      setState(key, trial.per[key].settle != null ? 'settled' : 'did not settle');
-      $(key === 'classical' ? 'ro-c-settle' : 'ro-l-settle').textContent =
-        trial.per[key].settle != null ? trial.per[key].settle.toFixed(2) + ' s' : 'dns';
+    for (const r of robotList) {
+      const p = trial.per[r.key];
+      setState(r.key, p.settle != null ? 'settled' : 'did not settle');
+      $(r.key === 'classical' ? 'ro-c-settle' : 'ro-l-settle').textContent =
+        p.settle != null ? p.settle.toFixed(2) + ' s' : 'dns';
     }
     trial = null;
   }
@@ -161,90 +157,94 @@
   function stepOnce() {
     t += DT;
     const sample = { t, errC: null, errL: null, sigma: null, ood: false };
-
-    for (const [key, v] of Object.entries(views)) {
-      // payload ramp + drift flag
+    for (const r of robotList) {
       const pt = payloadTarget;
-      if (v.sim.payload < pt) v.sim.payload = Math.min(pt, v.sim.payload + 1.2 * DT);
-      if (v.sim.payload > pt) v.sim.payload = Math.max(pt, v.sim.payload - 1.2 * DT);
-      v.sim.driftOn = driftOn;
+      if (r.sim.payload < pt) r.sim.payload = Math.min(pt, r.sim.payload + 1.2 * DT);
+      if (r.sim.payload > pt) r.sim.payload = Math.max(pt, r.sim.payload - 1.2 * DT);
+      r.sim.driftOn = driftOn;
 
-      const markersPx = v.sim.markers3().map((p) => cam.project(p));
-      const tipPx = markersPx[3];
+      const markers = camera.senseMarkers(r.sim.markers3(), camSide, camTop);
       let err = null;
-      if (target && tipPx && v.ctrl) {
-        err = Math.hypot(tipPx[0] - target[0], tipPx[1] - target[1]);
-        const out = v.ctrl.step(markersPx, target, DT, W, H);
-        v.sim.setCommand(out.qCmd);
-        v.lastOut = out;
-        if (key === 'learned') {
-          sample.sigma = out.sigma;
-          sample.ood = out.ood;
-        }
+      if (target && markers) {
+        err = v3.norm(v3.sub(markers[3], target));
+        const out = ctrlOf(r).step(markers, target, DT);
+        r.sim.setCommand(out.qCmd);
+        r.lastOut = out;
+        if (r.key === 'learned') { sample.sigma = out.sigma; sample.ood = out.ood; }
       }
-      v.sim.step(DT);
-      if (err != null) sample[key === 'classical' ? 'errC' : 'errL'] = err;
+      r.sim.step(DT);
+      if (err != null) sample[r.key === 'classical' ? 'errC' : 'errL'] = err * MM;
 
-      // trial bookkeeping
       if (trial && err != null) {
-        const p = trial.per[key];
+        const p = trial.per[r.key];
         const tt = t - trial.t0;
-        if (err < SETTLE_PX) {
+        if (err < SETTLE_U) {
           if (p.bandEnter == null) p.bandEnter = tt;
           if (p.settle == null && tt - p.bandEnter >= SETTLE_HOLD) p.settle = p.bandEnter;
         } else p.bandEnter = null;
         if (tt > TRIAL_S - 1) p.tail.push(err);
       }
     }
-
     if (trial && t - trial.t0 >= TRIAL_S) finishTrial();
     if (target) charts.push(sample);
   }
 
   // ---- drawing ----
   let frames = 0, fpsT = performance.now(), domTick = 0;
+  function fanFor(r) {
+    if (r.key !== 'learned' || !r.lastOut || !target || !r.lastOut.membersV) return null;
+    const J = ibvs.idealJacobian3(ctrlOf(r).qCmd());
+    const tip = r.sim.markers3()[3];
+    const toPoint = (vel) => {
+      const d = [0, 1, 2].map((k) => (J[k][0] * vel[0] + J[k][1] * vel[1] + J[k][2] * vel[2] + J[k][3] * vel[3]) * FAN_HORIZON);
+      const n = v3.norm(d);
+      return v3.add(tip, n > 0.4 ? v3.scale(d, 0.4 / n) : d);
+    };
+    return { members: r.lastOut.membersV.map(toPoint), mean: toPoint(r.lastOut.meanV) };
+  }
   function drawAll() {
-    for (const [key, v] of Object.entries(views)) {
-      let fan = null;
-      if (key === 'learned' && v.ctrl && v.lastOut && target) {
-        const J = ibvs.idealJacobianPx(v.ctrl.qCmd(), cam);
-        const toPx = (vel) => {
-          const a = [
-            (J[0][0] * vel[0] + J[0][1] * vel[1] + J[0][2] * vel[2] + J[0][3] * vel[3]) * FAN_HORIZON,
-            (J[1][0] * vel[0] + J[1][1] * vel[1] + J[1][2] * vel[2] + J[1][3] * vel[3]) * FAN_HORIZON,
-          ];
-          const n = Math.hypot(a[0], a[1]);
-          return n > 46 ? [a[0] * 46 / n, a[1] * 46 / n] : a;
-        };
-        fan = { members: v.lastOut.membersV.map(toPx), mean: toPx(v.lastOut.meanV) };
-      }
-      const live = target && v.lastOut;
-      const phase = live ? (v.lastOut.tracking ? ' · TRACKING PLAN' : ' · IMAGE LOOP') : '';
-      render.drawFeed(v.ctx, {
-        W, H, cam, sim: v.sim, accent: v.accent, target, hull, outline,
-        sRef: live ? v.lastOut.sRef : null,
-        tracking: live ? v.lastOut.tracking : false,
-        plan: v.ctrl && target ? v.ctrl.plan() : null,
-        planView: true,
-        fan,
-        ood: key === 'learned' && v.ctrl && v.lastOut ? v.lastOut.ood : false,
-        oodGain: learned.OOD_GAIN,
-        label: v.label + phase + (key === 'learned' && !v.ctrl ? ' · NO WEIGHTS EMBEDDED' : ''),
-        clickHint: !hadClick && !demo,
-        t,
-      });
-    }
+    const learnedOut = robots.learned && robots.learned.lastOut;
+    const live = target && robots.classical.lastOut;
+    const phase = live ? (robots.classical.lastOut.tracking ? ' · TRACKING PLAN' : ' · FEEDBACK LOOP') : '';
+    const robotsDraw = robotList.map((r) => ({
+      sim: r.sim, accent: r.accent, fan: fanFor(r),
+      sRef: r.lastOut ? r.lastOut.sRef : null,
+      tracking: r.lastOut ? r.lastOut.tracking : false,
+    }));
+    const common = {
+      W, H, robots: robotsDraw, target,
+      volume: { mesh, show: true },
+      ood: !!(target && learnedOut && learnedOut.ood), oodGain: learned.OOD_GAIN, t,
+    };
+    scene.draw(views.inspector.ctx, Object.assign({}, common, {
+      layerKey: 'inspector',
+      cam: orbitCam(),
+      plane: { y: planeY, show: false },
+      sensors: [{ cam: camSide, label: 'CAM 01' }, { cam: camTop, label: 'CAM 02' }],
+      label: 'INSPECTOR · ' + presetName() + phase,
+      clickHint: !hadClick && !demo ? 'drag to orbit · click to place a target on the plane' : null,
+      hint: rayNote,
+    }));
+    scene.draw(views.side.ctx, Object.assign({}, common, {
+      layerKey: 'side',
+      cam: camSide,
+      plane: { y: planeY, show: true, active: planeDrag },
+      sensors: null,
+      label: 'CAM 01 · SIDE SENSOR' + phase,
+      clickHint: !hadClick && !demo ? 'drag the plane to set the target height' : null,
+      hint: '',
+    }));
     charts.draw();
 
     if (++domTick % 6 === 0) {
       const last = target ? lastSample : null;
       if (last) {
-        $('ro-c-err').textContent = last.errC != null ? last.errC.toFixed(1) + ' px' : '–';
-        $('ro-l-err').textContent = last.errL != null ? last.errL.toFixed(1) + ' px' : '–';
+        $('ro-c-err').textContent = last.errC != null ? last.errC.toFixed(1) + ' mm' : '–';
+        $('ro-l-err').textContent = last.errL != null ? last.errL.toFixed(1) + ' mm' : '–';
         $('ro-l-sigma').textContent = last.sigma != null ? last.sigma.toFixed(3) : '–';
       }
+      $('plane-y-val').textContent = (planeY * MM).toFixed(0) + ' mm';
     }
-
     frames++;
     const now = performance.now();
     if (now - fpsT > 1000) {
@@ -254,6 +254,8 @@
   }
 
   // ---- main loop ----
+  // dev hook: window.CR_PROF accumulates ms spent stepping and drawing
+  const prof = (window.CR_PROF = { stepMs: 0, drawMs: 0, steps: 0, frames: 0 });
   let prev = performance.now(), acc = 0;
   function loop(now) {
     let dtReal = (now - prev) / 1000;
@@ -261,28 +263,110 @@
     if (dtReal > 0.1) dtReal = 0.1;
     acc += dtReal;
     let n = 0;
-    while (acc >= DT && n < 4) { stepOnce(); runDemo(); acc -= DT; n++; }
+    const t0 = performance.now();
+    while (acc >= DT && n < 4) { stepOnce(); runDemo(); acc -= DT; n++; prof.steps++; }
+    const t1 = performance.now();
     drawAll();
+    prof.stepMs += t1 - t0; prof.drawMs += performance.now() - t1; prof.frames++;
     requestAnimationFrame(loop);
   }
 
-  // ---- interaction ----
-  function canvasClick(ev, v) {
-    const rect = v.canvas.getBoundingClientRect();
-    const px = [
-      (ev.clientX - rect.left) * (W / rect.width),
-      (ev.clientY - rect.top) * (H / rect.height),
-    ];
-    hadClick = true;
-    if (demo) stopDemo('demo stopped, you have the controls');
-    startTrial(px);
+  // ---- target placement: click ray x height plane ----
+  function targetFromRay() {
+    const hit = camera.rayPlaneY(lastRay.origin, lastRay.dir, planeY);
+    if (hit) { rayNote = ''; return hit; }
+    const w = v3.sub(camera.CENTER, lastRay.origin);
+    const tt = Math.max(0.1, v3.dot(w, lastRay.dir));
+    rayNote = 'ray nearly parallel to the plane: target placed at the nearest point to the workspace centre';
+    return v3.add(lastRay.origin, v3.scale(lastRay.dir, tt));
   }
-  for (const v of Object.values(views)) {
-    v.canvas.addEventListener('click', (ev) => canvasClick(ev, v));
+  function canvasPx(ev, cv) {
+    const rect = cv.getBoundingClientRect();
+    return [(ev.clientX - rect.left) * (W / rect.width), (ev.clientY - rect.top) * (H / rect.height)];
   }
 
+  // inspector: drag orbits, click places
+  {
+    const cv = views.inspector.canvas;
+    let down = null;
+    cv.addEventListener('pointerdown', (ev) => {
+      down = { x: ev.clientX, y: ev.clientY, az: orbit.az, el: orbit.el, moved: false };
+      cv.setPointerCapture(ev.pointerId);
+    });
+    cv.addEventListener('pointermove', (ev) => {
+      if (!down) return;
+      const dx = ev.clientX - down.x, dy = ev.clientY - down.y;
+      if (!down.moved && Math.hypot(dx, dy) < 4) return;
+      down.moved = true;
+      orbit.az = down.az - dx * 0.008;
+      orbit.el = Math.max(-1.55, Math.min(1.55, down.el + dy * 0.008));
+    });
+    const up = (ev) => {
+      if (!down) return;
+      const wasClick = !down.moved;
+      down = null;
+      if (!wasClick) return;
+      hadClick = true;
+      if (demo) stopDemo('demo stopped, you have the controls');
+      const [u, v] = canvasPx(ev, cv);
+      const cam = orbitCam();
+      lastRay = { origin: cam.pos, dir: cam.rayDir(u, v) };
+      startTrial(targetFromRay());
+    };
+    cv.addEventListener('pointerup', up);
+    cv.addEventListener('pointercancel', () => { down = null; });
+  }
+
+  // side feed: drag the plane
+  function setPlaneY(y, live) {
+    planeY = Math.max(PLANE_MIN, Math.min(PLANE_MAX, y));
+    $('plane-y').value = planeY.toFixed(2);
+    if (lastRay && live) {
+      target = targetFromRay();
+      if (trial) abandonTrial();
+    }
+  }
+  {
+    const cv = views.side.canvas;
+    let moved = false;
+    cv.addEventListener('pointerdown', (ev) => {
+      const [, v] = canvasPx(ev, cv);
+      const py = scene.planeScreenY(camSide, planeY);
+      if (py != null && Math.abs(v - py) < 16) {
+        planeDrag = true; moved = false;
+        cv.setPointerCapture(ev.pointerId);
+        hadClick = true;
+        if (demo) stopDemo('demo stopped, you have the controls');
+      }
+    });
+    cv.addEventListener('pointermove', (ev) => {
+      if (!planeDrag) return;
+      const [u, v] = canvasPx(ev, cv);
+      const y = scene.planeYFromPixel(camSide, u, v);
+      if (y != null) { setPlaneY(y, true); moved = true; }
+    });
+    const up = () => {
+      if (!planeDrag) return;
+      planeDrag = false;
+      if (moved && target) startTrial(target);
+    };
+    cv.addEventListener('pointerup', up);
+    cv.addEventListener('pointercancel', up);
+  }
+  $('plane-y').addEventListener('input', (ev) => setPlaneY(parseFloat(ev.target.value), true));
+  $('plane-y').addEventListener('change', () => { if (target) startTrial(target); });
+
+  // presets
+  for (const b of document.querySelectorAll('button[data-preset]')) {
+    b.addEventListener('click', () => {
+      const p = camera.PRESETS[b.dataset.preset];
+      if (p) { orbit.az = p.az; orbit.el = p.el; }
+    });
+  }
+
+  // toggles
   function toggleChanged() {
-    const p = $('tgl-payload').checked, d = $('tgl-drift').checked;
+    const p = $('tgl-payload').checked, d = $('tgl-drift').checked, pl = $('tgl-plan').checked;
     if (p !== (payloadTarget > 0)) {
       payloadTarget = p ? 1 : 0;
       charts.addEvent(t, p ? 'payload on' : 'payload off');
@@ -291,19 +375,24 @@
       driftOn = d;
       charts.addEvent(t, d ? 'drift on' : 'drift off');
     }
+    if (pl !== usePlan) {
+      usePlan = pl;
+      charts.addEvent(t, pl ? 'plan on' : 'plan off');
+      if (target) for (const r of robotList) ctrlOf(r).newTarget(target);
+    }
     if (trial && t - trial.t0 < TRIAL_S) abandonTrial();
   }
-  $('tgl-payload').addEventListener('change', toggleChanged);
-  $('tgl-drift').addEventListener('change', toggleChanged);
+  for (const id of ['tgl-payload', 'tgl-drift', 'tgl-plan']) $(id).addEventListener('change', toggleChanged);
 
   function resetAll() {
-    for (const v of Object.values(views)) {
-      v.sim = truth.createTruth(SEED);
-      v.sim.reset(Q0);
-      if (v.ctrl) v.ctrl.reset(Q0);
-      v.lastOut = null;
+    for (const r of robotList) {
+      r.sim = truth.createTruth(SEED);
+      r.sim.reset(Q0);
+      r.tracked.reset(Q0);
+      r.direct.reset(Q0);
+      r.lastOut = null;
     }
-    target = null;
+    target = null; lastRay = null; rayNote = '';
     trial = null;
     charts.reset();
     $('ro-c-err').textContent = '–'; $('ro-l-err').textContent = '–';
@@ -312,96 +401,65 @@
     setState('classical', 'idle'); setState('learned', 'idle');
   }
   $('btn-reset').addEventListener('click', () => {
-    $('tgl-payload').checked = false; $('tgl-drift').checked = false;
-    payloadTarget = 0; driftOn = false;
+    $('tgl-payload').checked = false; $('tgl-drift').checked = false; $('tgl-plan').checked = true;
+    payloadTarget = 0; driftOn = false; usePlan = true;
     if (demo) stopDemo('');
     resetAll();
   });
 
   // ---- scripted demo ----
-  function targetFromQ(q) {
-    const p = cam.project(pcc.tip3(q));
-    return [p[0], p[1]];
-  }
   const TQ = {
     a: [1.15, -0.25, 0.55, 0.4],
     b: [0.45, 0.5, -0.7, 0.35],
     c: [1.6, 0.15, 0.2, -0.5],
     d: [0.8, -0.5, 0.9, 0.6],
     // both segments curled the same way at the curvature limit: a workspace
-    // edge target that the version 1 loop cannot reach from the rest pose
-    // (it commits to the opposite bending plane and stalls; test/sanity.js)
+    // edge target the direct laws cannot reach from the rest pose
     edge: [2.2 * Math.cos(0.2), 2.2 * Math.sin(0.2), 2.6 * Math.cos(0.2), 2.6 * Math.sin(0.2)],
   };
-  function inHull(p) {
-    let inside = false;
-    for (let i = 0, j = hull.length - 1; i < hull.length; j = i++) {
-      const a = hull[i], b = hull[j];
-      if ((a[1] > p[1]) !== (b[1] > p[1]) &&
-          p[0] < ((b[0] - a[0]) * (p[1] - a[1])) / (b[1] - a[1]) + a[0]) {
-        inside = !inside;
-      }
-    }
-    return inside;
-  }
-
-  function oodTarget() {
-    // a visible pixel outside the training envelope: try the frame corners,
-    // else push a hull vertex outward and clamp into the frame
-    for (const c of [[30, 30], [W - 30, 30], [30, H - 30], [W - 30, H - 30]]) {
-      if (!inHull(c)) return c;
-    }
-    let best = hull[0], bd = 0;
-    for (const p of hull) {
-      const d = Math.hypot(p[0] - hullCentroid[0], p[1] - hullCentroid[1]);
-      if (d > bd) { bd = d; best = p; }
-    }
-    return [
-      Math.min(W - 20, Math.max(20, hullCentroid[0] + (best[0] - hullCentroid[0]) * 1.4)),
-      Math.min(H - 20, Math.max(20, hullCentroid[1] + (best[1] - hullCentroid[1]) * 1.4)),
-    ];
-  }
+  const T3 = (q) => pcc.tip3(q);
+  // just past the straight arm's reach (tip at z = 1.8), visible in both views
+  const BEYOND = [0.1, -0.1, 2.35];
+  function setPreset(name) { const p = camera.PRESETS[name]; orbit.az = p.az; orbit.el = p.el; }
+  function setPlan(on) { $('tgl-plan').checked = on; toggleChanged(); }
 
   function demoSteps() {
     const s = [];
     let at = 0;
     const add = (dt, fn, note) => { at += dt; s.push({ at, fn, note }); };
     add(0, () => {
-      $('tgl-payload').checked = false; $('tgl-drift').checked = false;
-      payloadTarget = 0; driftOn = false;
+      $('tgl-payload').checked = false; $('tgl-drift').checked = false; $('tgl-plan').checked = false;
+      payloadTarget = 0; driftOn = false; usePlan = false;
+      setPreset('iso');
       resetAll();
-    }, 'Nominal physics. Same targets for both controllers.');
-    add(0.8, () => startTrial(targetFromQ(TQ.edge)),
-      'A workspace-edge target. From this pose the version 1 loop stalls in the wrong bending plane; version 2 plans first, then closes the loop.');
-    add(6.4, () => startTrial(targetFromQ(TQ.a)), 'Interior targets. The plan costs a little time here; the numbers below keep score.');
-    add(6.4, () => startTrial(targetFromQ(TQ.b)));
-    add(6.4, () => startTrial(targetFromQ(TQ.c)));
-    add(6.6, () => {
-      $('tgl-payload').checked = true; toggleChanged();
-    }, 'Payload on. The ideal model does not know about sag.');
-    add(1.2, () => startTrial(targetFromQ(TQ.a)));
-    add(6.4, () => startTrial(targetFromQ(TQ.b)));
-    add(6.4, () => startTrial(targetFromQ(TQ.d)));
-    add(6.6, () => {
-      $('tgl-drift').checked = true; toggleChanged();
-    }, 'Tendon drift on. A slow bias neither controller was told about.');
-    add(1.2, () => startTrial(targetFromQ(TQ.c)));
-    add(6.4, () => startTrial(targetFromQ(TQ.a)));
-    add(6.6, () => startTrial(oodTarget()),
-      'A target outside the training envelope. Warn, do not bluff.');
+    }, 'Nominal physics, planner OFF: the direct feedback laws, from the rest pose.');
+    add(0.8, () => startTrial(T3(TQ.edge)),
+      'A workspace-edge target with the direct laws. The classical law commits to the wrong bending plane and stalls short of it.');
+    add(6.6, () => { setPlan(true); }, 'Planner ON. Same target, same starting pose.');
+    add(0.4, () => startTrial(T3(TQ.edge)));
+    add(6.4, () => startTrial(T3(TQ.a)), 'Interior targets. The plan costs a little time here; the table keeps score.');
+    add(6.4, () => startTrial(T3(TQ.b)));
+    add(6.6, () => { $('tgl-payload').checked = true; toggleChanged(); setPreset('side'); },
+      'Payload on, seen from the side sensor. The ideal model does not know about sag.');
+    add(1.2, () => startTrial(T3(TQ.a)));
+    add(6.4, () => startTrial(T3(TQ.d)));
+    add(6.6, () => { $('tgl-drift').checked = true; toggleChanged(); },
+      'Tendon drift on. A slow bias neither controller was told about.');
+    add(1.2, () => startTrial(T3(TQ.c)));
+    add(6.4, () => startTrial(T3(TQ.a)));
+    add(6.6, () => { setPreset('iso'); startTrial(BEYOND); },
+      'A target outside the reachable envelope. The plan stops at the closest reachable point; the ensemble flags what it was never shown.');
     add(7.5, () => {
       $('tgl-payload').checked = false; $('tgl-drift').checked = false;
       toggleChanged();
-    }, 'Done. The table has the numbers; click anywhere to keep playing.');
-    add(0.1, () => stopDemo()); // keep the final note on screen
+    }, 'Done. The table has the numbers; orbit, move the plane, click anywhere to keep playing.');
+    add(0.1, () => stopDemo());
     return s;
   }
 
   function runDemo() {
     if (!demo) return;
     // a step may call stopDemo(), which nulls demo; re-check each iteration
-    // (version 1 did not, threw here on the last step, and its animation loop
-    // died with the exception)
     while (demo && demo.idx < demo.steps.length && t - demo.tStart >= demo.steps[demo.idx].at) {
       const st = demo.steps[demo.idx++];
       st.fn();
@@ -421,9 +479,9 @@
   });
 
   // ---- go ----
+  $('plane-y').min = PLANE_MIN; $('plane-y').max = PLANE_MAX; $('plane-y').step = 0.01;
+  $('plane-y').value = planeY.toFixed(2);
   resetAll();
-  // #demo starts the scripted demo immediately (handy for screen recording);
-  // #demo,ff=12 additionally fast-forwards 12 s of sim time (dev hook)
   const hash = location.hash.slice(1).split(',');
   if (hash.includes('demo')) $('btn-demo').click();
   const ff = hash.find((s) => s.startsWith('ff='));

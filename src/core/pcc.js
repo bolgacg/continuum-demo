@@ -71,13 +71,14 @@
     ];
   }
 
-  function clampQ(q) {
+  function clampQ(q, scale) {
     const out = q.slice();
+    const sc = scale || 1;
     for (let i = 0; i < NSEG; i++) {
       const kx = out[2 * i], ky = out[2 * i + 1];
       const k = Math.hypot(kx, ky);
-      if (k > KMAX[i]) {
-        const f = KMAX[i] / k;
+      if (k > KMAX[i] * sc) {
+        const f = (KMAX[i] * sc) / k;
         out[2 * i] = kx * f;
         out[2 * i + 1] = ky * f;
       }
