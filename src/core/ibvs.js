@@ -77,10 +77,18 @@
       reset(q0) { qBelief = (q0 || [0, 0, 0, 0]).slice(); },
       qBelief: () => qBelief.slice(),
       // tipPx/targetPx: [u, v]. Returns the new absolute command.
+      // Version 1 law: feedback on the clicked target, no feed-forward.
       step(tipPx, targetPx, dt) {
-        const e = [tipPx[0] - targetPx[0], tipPx[1] - targetPx[1]];
+        return this.stepTrack(tipPx, targetPx, null, dt);
+      },
+      // Tracking form: feedback on a (possibly moving) reference pixel plus
+      // the reference's configuration velocity as feed-forward. With a fixed
+      // reference and no feed-forward this is exactly the version 1 law.
+      stepTrack(tipPx, refPx, qDotRef, dt) {
+        const e = [tipPx[0] - refPx[0], tipPx[1] - refPx[1]];
         const J = idealJacobianPx(qBelief, cam);
-        const v = clampRate(dlsVelocity(J, e, GAIN), RATE_MAX);
+        const fb = dlsVelocity(J, e, GAIN);
+        const v = clampRate(qDotRef ? fb.map((x, i) => x + qDotRef[i]) : fb, RATE_MAX);
         for (let i = 0; i < 4; i++) qBelief[i] += v[i] * dt;
         qBelief = pcc.clampQ(qBelief);
         return qBelief.slice();

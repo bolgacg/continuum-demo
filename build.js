@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = __dirname;
-const CORE = ['math3', 'pcc', 'camera', 'truth', 'ibvs', 'features', 'mlp', 'learned']
+const CORE = ['math3', 'pcc', 'camera', 'truth', 'ibvs', 'features', 'mlp', 'learned', 'planner', 'workspace']
   .map((f) => path.join(ROOT, 'src', 'core', f + '.js'));
 const UI = ['render', 'chart', 'main']
   .map((f) => path.join(ROOT, 'src', 'ui', f + '.js'));
@@ -21,8 +21,11 @@ const weights = fs.existsSync(weightsPath)
   ? fs.readFileSync(weightsPath, 'utf8').trim()
   : 'null';
 
+const wsPath = path.join(ROOT, 'train', 'workspace.json');
+const workspace = fs.existsSync(wsPath) ? fs.readFileSync(wsPath, 'utf8').trim() : 'null';
+
 let html = fs.readFileSync(path.join(ROOT, 'template.html'), 'utf8');
-html = html.replace('/*__WEIGHTS__*/', 'const CR_WEIGHTS = ' + weights + ';');
+html = html.replace('/*__WEIGHTS__*/', 'const CR_WEIGHTS = ' + weights + ';\nconst CR_WORKSPACE = ' + workspace + ';');
 html = html.replace('/*__CORE__*/', bundle(CORE));
 html = html.replace('/*__UI__*/', bundle(UI));
 
@@ -32,4 +35,5 @@ fs.writeFileSync(out, html);
 fs.writeFileSync(path.join(ROOT, 'index.html'), html);
 const kb = (fs.statSync(out).size / 1024).toFixed(0);
 console.log('demo.html + index.html written (' + kb + ' kB, weights ' +
-  (weights === 'null' ? 'MISSING' : 'embedded') + ')');
+  (weights === 'null' ? 'MISSING' : 'embedded') + ', workspace outline ' +
+  (workspace === 'null' ? 'MISSING' : 'embedded') + '). v1.html is frozen and not rebuilt.');

@@ -71,16 +71,25 @@
       targetHull,
       reset(q0) { qCmd = (q0 || [0, 0, 0, 0]).slice(); },
       qCmd: () => qCmd.slice(),
+      // Version 1 law: feedback on the clicked target, no feed-forward.
       step(markersPx, targetPx, dt, w, h) {
-        const x = features.build(markersPx, targetPx, w, h);
+        return this.stepTrack(markersPx, targetPx, null, dt, w, h, targetPx);
+      },
+      // Tracking form: the network's feedback acts on the reference pixel;
+      // the plan's configuration velocity is added as feed-forward and is not
+      // scaled by the OOD authority drop, since it does not come from the
+      // networks. The envelope test is on the final target, the thing the
+      // ensemble was never shown, not on the moving reference.
+      stepTrack(markersPx, refPx, qDotRef, dt, w, h, finalTargetPx) {
+        const x = features.build(markersPx, refPx, w, h);
         const tip = markersPx[3];
-        const e = [tip[0] - targetPx[0], tip[1] - targetPx[1]];
+        const e = [tip[0] - refPx[0], tip[1] - refPx[1]];
 
         // envelope checks: target inside the training-target hull, then
         // feature-space nearest-neighbor distance to the training set
         const xn = x.map((v, i) => (v - inputMean[i]) / inputStd[i]);
         const dEnv = knnDist(xn);
-        let ood = !targetInEnvelope(targetPx) || dEnv > knnWarn;
+        let ood = !targetInEnvelope(finalTargetPx || refPx) || dEnv > knnWarn;
 
         const vs = memberVelocities(xn, e);
         const mean = [0, 0, 0, 0];
@@ -94,7 +103,8 @@
         if (sigma > sigmaWarn) ood = true;
 
         const gainScale = ood ? OOD_GAIN : 1;
-        const v = ibvs.clampRate(mean.map((vi) => vi * gainScale), ibvs.RATE_MAX);
+        const v = ibvs.clampRate(
+          mean.map((vi, i) => vi * gainScale + (qDotRef ? qDotRef[i] : 0)), ibvs.RATE_MAX);
         for (let i = 0; i < 4; i++) qCmd[i] += v[i] * dt;
         qCmd = pcc.clampQ(qCmd);
         return { qCmd: qCmd.slice(), sigma, dEnv, ood, gainScale, membersV: vs, meanV: mean };

@@ -28,6 +28,18 @@
         if (c[2] < 1e-4) return null;
         return [w / 2 + (f * c[0]) / c[2], h / 2 + (f * c[1]) / c[2], c[2]];
       },
+      // Unit world direction of the viewing ray through pixel (u, v). A pixel
+      // target is this ray, not a point: depth is not observed.
+      rayDir(u, v) {
+        const c = [(u - w / 2) / f, (v - h / 2) / f, 1];
+        // R^T c (rows of R are the camera axes in world coordinates)
+        const d = [
+          R[0] * c[0] + R[3] * c[1] + R[6] * c[2],
+          R[1] * c[0] + R[4] * c[1] + R[7] * c[2],
+          R[2] * c[0] + R[5] * c[1] + R[8] * c[2],
+        ];
+        return v3.normalize(d);
+      },
     };
   }
 

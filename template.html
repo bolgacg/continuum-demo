@@ -141,9 +141,21 @@
     margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--hairline);
     color: var(--muted); font-size: 12.5px; display: flex; gap: 16px; flex-wrap: wrap;
   }
+  /* version 2: change log and the frozen version 1 */
+  .change { max-width: 800px; margin: 18px 0 26px; }
+  .change h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .change .q { font-style: italic; color: var(--ink-2); margin-bottom: 8px; }
+  .change p { color: var(--ink-2); font-size: 14px; margin: 6px 0; }
+  .change p b { color: var(--ink); font-weight: 600; }
+  .change .kv { font-family: var(--mono); font-size: 12.5px; color: var(--ink); margin-top: 6px; }
+  .static-table td { color: var(--ink-2); }
+  .static-table td.v2 { color: var(--ink); }
+  .v1-note { max-width: 800px; color: var(--ink-2); font-size: 14px; margin-bottom: 14px; }
+  .v1-frame { width: 100%; height: 1720px; border: 1px solid var(--border); border-radius: 10px; background: var(--page); }
   @media (max-width: 780px) {
     .feeds { grid-template-columns: 1fr; }
     .legend { position: static; margin-bottom: 8px; }
+    .v1-frame { height: 2400px; }
   }
   @media (prefers-reduced-motion: reduce) {
     .knob, .knob::after { transition: none; }
@@ -154,7 +166,7 @@
 <div class="wrap">
 
   <header>
-    <div class="eyebrow">simulation study · single file · no libraries</div>
+    <div class="eyebrow">simulation study · single file · no libraries · version 2</div>
     <h1>Continuum robot visual servoing, two ways</h1>
     <p class="intro">
       A two-segment tendon-driven continuum robot chases clicked targets using nothing but
@@ -165,6 +177,13 @@
       continuum surgical robots. It is a toy, and the gap between the idealized model and the
       simulated truth is the point.
     </p>
+    <p class="intro" style="margin-top:10px">
+      <b>Version 2</b> answers three questions a robotics researcher asked about the first
+      version: where the boundary came from, whether the geometry varies, and how the inverse
+      kinematics was solved. What changed, why version 1 did it the other way, and what each
+      change cost are <a href="#changes">listed below the demo</a>. Version 1 is kept
+      unchanged at the <a href="#v1">bottom of the page</a>.
+    </p>
   </header>
 
   <div class="feeds">
@@ -172,7 +191,7 @@
       <div class="feed-head">
         <span class="feed-dot" style="background:var(--classical)"></span>
         <span class="feed-title">Classical IBVS</span>
-        <span class="feed-sub">Jacobian from the ideal PCC model</span>
+        <span class="feed-sub">ideal PCC Jacobian · plan, then track</span>
       </div>
       <div class="feed-frame"><canvas id="feed-classical" width="460" height="345"></canvas></div>
       <div class="readouts">
@@ -185,7 +204,7 @@
       <div class="feed-head">
         <span class="feed-dot" style="background:var(--learned)"></span>
         <span class="feed-title">Learned ensemble</span>
-        <span class="feed-sub">5 small networks, disagreement shown live</span>
+        <span class="feed-sub">5 small networks · same plan, then track</span>
       </div>
       <div class="feed-frame"><canvas id="feed-learned" width="460" height="345"></canvas></div>
       <div class="readouts">
@@ -243,18 +262,99 @@
     </div>
   </div>
 
+  <h2 id="changes">What changed in version 2, and why</h2>
+
+  <div class="change">
+    <h3>1. Where did the irregular boundary come from?</h3>
+    <p class="q">Version 1 drew one dashed outline and described it as "the convex hull of the targets used in training, which is close to the reachable set".</p>
+    <p><b>What it was.</b> Exactly that: the convex hull, in image pixels, of the 900 targets the ensemble saw during training. Those targets were tip positions of random configurations at up to 90% of the curvature limit, projected through the camera. It looks irregular because it is the perspective silhouette of a three-dimensional workspace, not because anything was drawn by hand. It was never the reachable set: the ideal model reaches about 35 px further on the side where the robot curls back on itself, and past the top and bottom of the frame.</p>
+    <p><b>Why version 1 did it.</b> The out-of-distribution test needed the training envelope, so that is what got drawn, and the actual workspace was never computed. A weekend shortcut, not a modelling decision, and "close to" hid the gap on exactly the side you notice when you push the robot around.</p>
+    <p><b>Version 2.</b> The solid grey outline is the reachable set of the ideal model at its curvature limits: 200,000 sampled configurations projected through the camera, rasterized, boundary traced. The dashed blue outline is the training envelope, kept because the ensemble's warning is still about that. The trial table now says <span class="kv">beyond reach</span> or <span class="kv">outside envelope</span>, which are different things.</p>
+  </div>
+
+  <div class="change">
+    <h3>2. How is the robot modelled? Is the distance between the joints variable?</h3>
+    <p class="q">On screen the four markers drift apart and together as the robot moves, which reads like a chain with variable link lengths, or a structure whose geometry varies along its length.</p>
+    <p><b>What it is.</b> Piecewise constant curvature, two segments of fixed arc length (1.0 and 0.8 in normalized units), one curvature vector per segment, three tendons per segment with a linear tendon-to-curvature map. There are no joints. The four markers sit at fixed arc positions: the middle and end of each segment. The model has no cross-section at all. The "truth" simulator keeps the same shape family and adds lag, backlash, load-dependent sag, inter-segment coupling and drift on top; its curvature is biased, not redistributed along the arc, which is a real limitation relative to a rod model.</p>
+    <p><b>Why it looked variable.</b> One oblique camera, chosen so gravity sag is visible in the image, foreshortens a body that bends in three dimensions. In 3D the chord between neighbouring markers varies by under 4% (it is the chord of a fixed-length arc); in the image it varies from about 1 px to about 60 px. Version 1 also drew the tube tapered from base to tip, purely for looks, which suggested a geometry that was never modelled. The failure was presentation, and it was mine.</p>
+    <p><b>Version 2.</b> The tube is drawn with one constant radius. Each feed carries a plan-view inset: the same robot from above, at true scale, with the base, the markers, the camera, and the viewing ray of the clicked target. Neither controller sees the inset. A pixel target is a ray, not a point, and the inset makes that visible.</p>
+  </div>
+
+  <div class="change">
+    <h3>3. How was the inverse kinematics solved?</h3>
+    <p class="q">It was not, in version 1.</p>
+    <p><b>What version 1 did.</b> Both controllers were local laws in image space. The classical one differentiates the ideal model numerically for a 2×4 pixel Jacobian at its believed configuration, takes a damped pseudo-inverse, and integrates the resulting curvature velocity; the learned one regresses the same kind of gain matrix from pixels. Four degrees of freedom serve a two-dimensional error, the pseudo-inverse resolves the redundancy by minimum norm, and nothing chooses the bending plane deliberately. With one camera the image target is a ray, so from some poses the loop commits to the wrong bending plane, hits the curvature limit and stalls with the tip short of the target. From the rest pose, a target at the right-hand edge of the workspace is reached by neither version 1 controller; the same target is reached from other poses. That is the path dependence you can provoke by stretching the robot out and bringing it back.</p>
+    <p><b>Why.</b> Standard image-based visual servoing is exactly this local law, and I evaluated it only on interior targets, so the failure basin was never measured. Adding a null-space term (curvature minimization, or a pull toward a good configuration) was tried and moves the numbers only slightly, because the problem is the basin, not the redundancy resolution.</p>
+    <p><b>Version 2.</b> Plan, then track. When a target is set, the inverse kinematics is solved numerically on the ideal model: a coarse global search over 8,000 sampled configurations for those whose projected tip lands near the target, the one nearest the current configuration is refined by damped Gauss-Newton inside the curvature limits, and if nothing reaches the target the closest reachable point is used. A straight configuration-space path to that solution runs at 60% of the actuator rate limit, and each controller tracks the projected reference along it with feed-forward plus its own feedback law. When the path ends, the reference is the clicked target and the loop is the version 1 law again. The plan is only as good as the ideal model; under payload the reference is not where the real tip goes and the feedback term carries the difference. The same planner sits above both controllers, so the comparison between them stays about the feedback law.</p>
+    <p><b>Measured.</b> Headless, 40 trials per cell, same protocol as the trial table (<span class="kv">node train/eval.js</span>). Edge targets are tips at 95 to 100% of the curvature limit; interior targets are the version 1 protocol.</p>
+  </div>
+
+  <div class="change">
+    <h3>Also fixed</h3>
+    <p>The last step of version 1's scripted demo threw an exception that stopped the page's animation loop, so after "click anywhere to keep playing" nothing responded. Version 1 below still has that bug; reload its frame if you ran its demo.</p>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Edge targets, version 1 against version 2</div>
+    <div class="panel-sub">Settled out of 40, median settle time, mean steady-state error.</div>
+    <div class="table-scroll">
+    <table class="static-table">
+      <thead><tr><th>Condition</th><th>Controller</th><th>v1 settled</th><th>v1 settle</th><th>v1 steady</th><th>v2 settled</th><th>v2 settle</th><th>v2 steady</th></tr></thead>
+      <tbody>
+        <tr><td>nominal</td><td>classical</td><td>33/40</td><td>1.33 s</td><td>5.8 px</td><td class="v2">40/40</td><td class="v2">1.83 s</td><td class="v2">0.2 px</td></tr>
+        <tr><td>nominal</td><td>learned</td><td>31/40</td><td>1.50 s</td><td>10.6 px</td><td class="v2">39/40</td><td class="v2">1.58 s</td><td class="v2">2.4 px</td></tr>
+        <tr><td>payload</td><td>classical</td><td>29/40</td><td>1.80 s</td><td>7.9 px</td><td class="v2">35/40</td><td class="v2">1.93 s</td><td class="v2">3.3 px</td></tr>
+        <tr><td>payload</td><td>learned</td><td>30/40</td><td>1.47 s</td><td>9.9 px</td><td class="v2">34/40</td><td class="v2">1.67 s</td><td class="v2">8.9 px</td></tr>
+        <tr><td>drift</td><td>classical</td><td>30/40</td><td>1.37 s</td><td>9.6 px</td><td class="v2">33/40</td><td class="v2">2.08 s</td><td class="v2">3.9 px</td></tr>
+        <tr><td>drift</td><td>learned</td><td>29/40</td><td>1.63 s</td><td>13.9 px</td><td class="v2">31/40</td><td class="v2">1.83 s</td><td class="v2">6.6 px</td></tr>
+        <tr><td>payload + drift</td><td>classical</td><td>30/40</td><td>2.00 s</td><td>9.9 px</td><td class="v2">31/40</td><td class="v2">1.98 s</td><td class="v2">6.3 px</td></tr>
+        <tr><td>payload + drift</td><td>learned</td><td>29/40</td><td>1.45 s</td><td>11.1 px</td><td class="v2">31/40</td><td class="v2">1.98 s</td><td class="v2">10.5 px</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">Interior targets, the cost of planning</div>
+    <div class="panel-sub">Same protocol. Version 2 settles as often or more, and slower: the plan paces the motion at 60% of the rate limit so the feedback term keeps authority.</div>
+    <div class="table-scroll">
+    <table class="static-table">
+      <thead><tr><th>Condition</th><th>Controller</th><th>v1 settled</th><th>v1 settle</th><th>v1 steady</th><th>v2 settled</th><th>v2 settle</th><th>v2 steady</th></tr></thead>
+      <tbody>
+        <tr><td>nominal</td><td>classical</td><td>40/40</td><td>1.20 s</td><td>0.2 px</td><td class="v2">40/40</td><td class="v2">1.62 s</td><td class="v2">0.3 px</td></tr>
+        <tr><td>nominal</td><td>learned</td><td>38/40</td><td>1.42 s</td><td>1.0 px</td><td class="v2">40/40</td><td class="v2">1.65 s</td><td class="v2">0.4 px</td></tr>
+        <tr><td>payload</td><td>classical</td><td>39/40</td><td>1.80 s</td><td>1.4 px</td><td class="v2">40/40</td><td class="v2">1.87 s</td><td class="v2">1.2 px</td></tr>
+        <tr><td>payload</td><td>learned</td><td>40/40</td><td>1.47 s</td><td>0.3 px</td><td class="v2">40/40</td><td class="v2">1.67 s</td><td class="v2">0.4 px</td></tr>
+        <tr><td>drift</td><td>classical</td><td>38/40</td><td>1.37 s</td><td>3.2 px</td><td class="v2">38/40</td><td class="v2">1.83 s</td><td class="v2">3.4 px</td></tr>
+        <tr><td>drift</td><td>learned</td><td>37/40</td><td>1.72 s</td><td>2.9 px</td><td class="v2">38/40</td><td class="v2">1.72 s</td><td class="v2">4.1 px</td></tr>
+        <tr><td>payload + drift</td><td>classical</td><td>37/40</td><td>1.87 s</td><td>3.5 px</td><td class="v2">37/40</td><td class="v2">2.47 s</td><td class="v2">3.5 px</td></tr>
+        <tr><td>payload + drift</td><td>learned</td><td>39/40</td><td>1.52 s</td><td>2.7 px</td><td class="v2">37/40</td><td class="v2">1.98 s</td><td class="v2">3.1 px</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
   <h2>What this is, and is not</h2>
   <ul class="notes">
-    <li>Both controllers see exactly the same thing: four marker pixels from one fixed camera. Neither reads simulator state.</li>
-    <li>The two robots are identical simulator instances with the same random seed, so the side-by-side comparison is fair.</li>
+    <li>Both controllers see exactly the same thing: four marker pixels from one fixed camera. Neither reads simulator state, and neither sees the plan-view inset.</li>
+    <li>The two robots are identical simulator instances with the same random seed, so the side-by-side comparison is fair. Both sit under the same planner.</li>
+    <li>The robot's geometry is fixed: constant arc lengths, constant curvature per segment, markers at fixed arc positions. What varies on screen is perspective.</li>
     <li>The "truth" simulator is phenomenological: constant curvature plus actuator lag, tendon backlash, gravity droop, inter-segment coupling and optional tendon drift. It is not rod mechanics, and nothing here claims to be.</li>
-    <li>The learned controller imitates a training-time expert that could see the simulator's true Jacobian. At run time it has no such access. When a request leaves the training envelope it says so and lowers its gain instead of pretending.</li>
-    <li>The dashed outline in each camera view is the convex hull of the targets used in training, which is close to the reachable set. Click outside it and the learned controller flags the request; the classical one has no concept of an envelope and just runs.</li>
-    <li>This page is the whole system: simulator, controllers and pretrained weights in one file. Training and evaluation scripts are in the repository.</li>
+    <li>The learned controller imitates a training-time expert that could see the simulator's true Jacobian. At run time it has no such access. When a request leaves the training envelope it says so and lowers its own gain instead of pretending; the plan's feed-forward is not scaled, because it does not come from the networks.</li>
+    <li>Solid grey outline: reachable set of the ideal model. Dashed blue outline: the ensemble's training envelope. The truth robot never leaves the first; the second is where the ensemble's warning starts.</li>
+    <li>This page is the whole system: simulator, planner, controllers, pretrained weights and the precomputed outline in one file. Training, outline and evaluation scripts are in the repository.</li>
   </ul>
 
+  <h2 id="v1">Version 1, as published on 17 August</h2>
+  <p class="v1-note">
+    Kept byte for byte and running below in its own frame (also at <a href="v1.html">v1.html</a>).
+    To see the difference, click a target near the right-hand end of its dashed outline from the
+    rest pose, then do the same above.
+  </p>
+  <iframe class="v1-frame" src="v1.html" title="Version 1 of the demo, unchanged" loading="lazy"></iframe>
+
   <footer>
-    <span>Bolgaç Gülen · August 2026</span>
+    <span>Bolgaç Gülen · August 2026 · version 2, 31 August</span>
     <span>Simulation only. No hardware, no clinical anything.</span>
     <span id="fps"></span>
   </footer>

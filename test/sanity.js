@@ -121,5 +121,90 @@ function check(name, cond, detail) {
     err.toFixed(2) + ')');
 }
 
+// --- version 2: reachable outline, planner, edge-target behaviour ---
+{
+  const fs = require('fs');
+  const path = require('path');
+  const W = 460, H = 345, dt = 1 / 60;
+  const cam = CR.camera.defaultCamera(W, H);
+  const weights = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'train', 'weights.json'), 'utf8'));
+
+  const outline = CR.workspace.reachableOutline(cam, { samples: 80000 });
+  check('reachable outline is a real polygon', outline.length > 20 && outline.length < 400,
+    outline.length + ' vertices');
+  const rng = CR.makeRng(123);
+  let inside = 0, total = 0;
+  for (let n = 0; n < 3000; n++) {
+    const q = [];
+    for (let i = 0; i < 2; i++) {
+      const a = rng() * 2 * Math.PI, k = Math.sqrt(rng()) * CR.pcc.KMAX[i];
+      q.push(k * Math.cos(a), k * Math.sin(a));
+    }
+    for (const payload of [0, 1]) {
+      const p = cam.project(CR.pcc.tip3(CR.truth.applyStatic(q, payload)));
+      if (!p) continue;
+      total++;
+      if (CR.workspace.pointInPolygon(p, outline)) inside++;
+    }
+  }
+  check('truth-sim tips stay inside the ideal outline (>99%)', inside / total > 0.99,
+    (100 * inside / total).toFixed(2) + '%');
+
+  // marker geometry is fixed: 3D chord between neighbours barely moves
+  let cMin = Infinity, cMax = 0;
+  for (let n = 0; n < 500; n++) {
+    const q = [];
+    for (let i = 0; i < 2; i++) {
+      const a = rng() * 2 * Math.PI, k = Math.sqrt(rng()) * CR.pcc.KMAX[i];
+      q.push(k * Math.cos(a), k * Math.sin(a));
+    }
+    const m = CR.pcc.markers3(q);
+    const c = CR.v3.norm(CR.v3.sub(m[1], m[0]));
+    cMin = Math.min(cMin, c); cMax = Math.max(cMax, c);
+  }
+  check('marker chord varies <5% in 3D (arc length is constant)', (cMax - cMin) / cMax < 0.05,
+    cMin.toFixed(3) + '..' + cMax.toFixed(3));
+
+  // planner: numerical IK on the edge target used by the scripted demo
+  const planner = CR.planner.createPlanner(cam);
+  const Q0 = [0.5, 0.1, -0.35, 0.3];
+  const edgeQ = [2.2 * Math.cos(0.2), 2.2 * Math.sin(0.2), 2.6 * Math.cos(0.2), 2.6 * Math.sin(0.2)];
+  const tEdge = cam.project(CR.pcc.tip3(edgeQ)).slice(0, 2);
+  const ik = planner.solveIK(tEdge, Q0);
+  check('IK reaches the edge target (<1 px residual)', ik.residual < 1, ik.residual.toFixed(2) + ' px');
+
+  function finalErr(kind, version) {
+    const sim = CR.truth.createTruth(2026);
+    sim.reset(Q0);
+    const base = kind === 'classical' ? CR.ibvs.createClassical(cam) : CR.learned.createLearned(weights);
+    const ctrl = version === 2 ? CR.planner.createTracked(base, planner, kind) : base;
+    ctrl.reset(Q0);
+    let err = Infinity;
+    for (let i = 0; i < 8 * 60; i++) {
+      const m = sim.markers3().map((p) => cam.project(p));
+      err = Math.hypot(m[3][0] - tEdge[0], m[3][1] - tEdge[1]);
+      const out = (version === 1 && kind === 'classical')
+        ? { qCmd: ctrl.step([m[3][0], m[3][1]], tEdge, dt) }
+        : ctrl.step(m, tEdge, dt, W, H);
+      sim.setCommand(out.qCmd);
+      sim.step(dt);
+    }
+    return err;
+  }
+  const c1 = finalErr('classical', 1), c2 = finalErr('classical', 2);
+  const l1 = finalErr('learned', 1), l2 = finalErr('learned', 2);
+  check('v1 classical stalls short of the edge target from rest', c1 > 20, c1.toFixed(1) + ' px');
+  check('v2 classical reaches it (<6 px)', c2 < 6, c2.toFixed(1) + ' px');
+  check('v1 learned stalls short of the edge target from rest', l1 > 20, l1.toFixed(1) + ' px');
+  check('v2 learned reaches it (<6 px)', l2 < 6, l2.toFixed(1) + ' px');
+
+  // tracking form with a fixed reference and no feed-forward is the v1 law
+  const a = CR.ibvs.createClassical(cam), b = CR.ibvs.createClassical(cam);
+  a.reset(Q0); b.reset(Q0);
+  const tip = cam.project(CR.pcc.tip3(Q0));
+  const qa = a.step([tip[0], tip[1]], tEdge, dt), qb = b.stepTrack([tip[0], tip[1]], tEdge, null, dt);
+  check('stepTrack(ref, no feed-forward) == v1 step', qa.every((v, i) => Math.abs(v - qb[i]) < 1e-12));
+}
+
 console.log(failures === 0 ? '\nall sanity checks passed' : '\n' + failures + ' FAILURES');
 process.exit(failures === 0 ? 0 : 1);

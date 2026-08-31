@@ -10,9 +10,39 @@ I built this over a weekend as a study of the problems in the SDU Robotics job a
 on sensing and AI-based control of continuum surgical robots. It is a toy, and the
 gap between the idealized model and the simulated truth is the point.
 
+**Version 2 (31 August)** answers three questions a robotics researcher asked about
+version 1: where the boundary came from, whether the geometry varies, and how the
+inverse kinematics was solved. The answers, what changed, why version 1 did it the
+other way, and what each change cost are in the "What changed in version 2" section
+of the page. Version 1 is kept byte for byte as `v1.html` and embedded at the bottom
+of the page. Summary:
+
+1. **Boundary.** Version 1 drew the convex hull of the training targets and called
+   it close to the reachable set. Version 2 draws the reachable set of the ideal
+   model (200,000 sampled configurations, projected, boundary traced;
+   `train/workspace.js`) as a solid outline and keeps the training envelope as a
+   dashed one. They differ by about 35 px where the robot curls back on itself.
+2. **Geometry.** Fixed: two segments of constant arc length, constant curvature per
+   segment, four markers at fixed arc positions, no joints, no cross-section. The
+   marker spacing on screen changes because one oblique camera foreshortens a body
+   bending in 3D (3D chord varies under 4%, pixel spacing from about 1 px to about
+   60 px). The decorative taper on the drawn tube is gone; a plan-view inset shows
+   the robot from above at true scale, with the viewing ray of the clicked target.
+3. **Inverse kinematics.** Version 1 solved none; both controllers were local
+   image-space laws, and from some poses they commit to the wrong bending plane and
+   stall at the curvature limit short of an edge target. Version 2 plans, then
+   tracks: numerical IK on the ideal model (coarse global search over 8,000 sampled
+   configurations, damped Gauss-Newton refinement, minimum change from the current
+   configuration, limits respected), a configuration path at 60% of the rate limit,
+   and each controller tracking the projected reference with feed-forward plus its
+   own feedback law (`src/core/planner.js`). Same planner above both controllers.
+4. **Bug.** The last step of version 1's scripted demo threw an exception that
+   stopped the animation loop; the page went dead after the demo. Fixed in
+   version 2; `v1.html` keeps the bug because it keeps everything.
+
 ## Quick start
 
-Live at <https://bolgacg.github.io/continuum-demo/> — nothing to install.
+Live at <https://bolgacg.github.io/continuum-demo/>, nothing to install.
 
 Or open `demo.html` in a browser. That is all: no install, no network, no libraries.
 Click either camera view to set a target, flip the payload and drift switches, or
@@ -64,7 +94,10 @@ predicted motion, so disagreement is visible directly.
 
 Headless closed-loop evaluation, 40 trials per condition, random poses and
 targets, 6 s per trial. Settle: error under 6 px held for 0.8 s. Steady state:
-mean error over the final second. `node train/eval.js` reproduces the table.
+mean error over the final second. `node train/eval.js` reproduces both tables
+below (version 1 and version 2, interior and edge targets).
+
+### Version 1 (interior targets, as published 17 August)
 
 | condition | controller | settled | median settle | mean steady-state |
 |---|---|---|---|---|
@@ -88,6 +121,44 @@ One result I did not expect: the learned controller holds up at twice the
 maximum payload it was trained on, because the gain it predicts keys on the
 observed marker geometry rather than on the load itself.
 
+### Version 2 against version 1
+
+Edge targets are tips at 95 to 100% of the curvature limit, inside the frame;
+interior targets are the version 1 protocol. Both controllers, both versions,
+same seeds.
+
+| targets | condition | controller | v1 settled | v1 median settle | v1 steady-state | v2 settled | v2 median settle | v2 steady-state |
+|---|---|---|---|---|---|---|---|---|
+| edge | nominal | classical | 33/40 | 1.33 s | 5.8 px | 40/40 | 1.83 s | 0.2 px |
+| edge | nominal | learned | 31/40 | 1.50 s | 10.6 px | 39/40 | 1.58 s | 2.4 px |
+| edge | payload | classical | 29/40 | 1.80 s | 7.9 px | 35/40 | 1.93 s | 3.3 px |
+| edge | payload | learned | 30/40 | 1.47 s | 9.9 px | 34/40 | 1.67 s | 8.9 px |
+| edge | drift | classical | 30/40 | 1.37 s | 9.6 px | 33/40 | 2.08 s | 3.9 px |
+| edge | drift | learned | 29/40 | 1.63 s | 13.9 px | 31/40 | 1.83 s | 6.6 px |
+| edge | payload + drift | classical | 30/40 | 2.00 s | 9.9 px | 31/40 | 1.98 s | 6.3 px |
+| edge | payload + drift | learned | 29/40 | 1.45 s | 11.1 px | 31/40 | 1.98 s | 10.5 px |
+| interior | nominal | classical | 40/40 | 1.20 s | 0.2 px | 40/40 | 1.62 s | 0.3 px |
+| interior | nominal | learned | 38/40 | 1.42 s | 1.0 px | 40/40 | 1.65 s | 0.4 px |
+| interior | payload | classical | 39/40 | 1.80 s | 1.4 px | 40/40 | 1.87 s | 1.2 px |
+| interior | payload | learned | 40/40 | 1.47 s | 0.3 px | 40/40 | 1.67 s | 0.4 px |
+| interior | drift | classical | 38/40 | 1.37 s | 3.2 px | 38/40 | 1.83 s | 3.4 px |
+| interior | drift | learned | 37/40 | 1.72 s | 2.9 px | 38/40 | 1.72 s | 4.1 px |
+| interior | payload + drift | classical | 37/40 | 1.87 s | 3.5 px | 37/40 | 2.47 s | 3.5 px |
+| interior | payload + drift | learned | 39/40 | 1.52 s | 2.7 px | 37/40 | 1.98 s | 3.1 px |
+
+The plan fixes the basin problem on edge targets and costs time on interior
+ones, because it paces the motion at 60% of the rate limit so the feedback term
+keeps authority. Under payload the plan is wrong (it is the ideal model's) and
+the feedback term carries the difference; that shows as the smaller gains in
+the payload rows. A null-space term instead of a plan (curvature minimization,
+or a pull toward a good configuration) was tried first and moved the edge
+numbers only slightly, because the failure is a basin, not a redundancy
+resolution.
+
+The version 1 table above differs slightly from the v1 rows here (38/40 vs
+39/40 payload classical, for instance) because the target sampler was changed
+to reject targets within 8 px of the frame edge for both versions.
+
 ## What this does not claim
 
 - It is a simulation. No hardware, no clinical anything. The job ad is about
@@ -99,21 +170,31 @@ observed marker geometry rather than on the load itself.
   which is the simplest thing that could work. No RL, no online adaptation.
 - The uncertainty display is honest but simple: an envelope test and an ensemble
   spread. It flags extrapolation; it does not certify anything.
+- The truth simulator shares the constant-curvature shape family with the ideal
+  model: its curvature is biased by load and coupling, not redistributed along
+  the arc. A rod model would be the next step, and the model mismatch here is
+  milder than a real tendon-driven robot's.
+- The planner is model-based and inherits the ideal model's errors. It solves a
+  pixel target, which with one camera is a ray, by choosing the reachable
+  configuration nearest the current one; depth is not observed, only assumed.
 
 ## Repository layout
 
 ```
-demo.html          the deliverable; everything inlined, open from disk
-template.html      page shell that build.js fills in
-build.js           node build.js -> writes demo.html
-src/core/          simulator + controllers, shared by browser and Node
-src/ui/            rendering, charts, app wiring
-train/train.js     data generation + ensemble training (writes weights.json)
-train/eval.js      closed-loop evaluation table
-test/sanity.js     kinematics and closed-loop sanity checks
+demo.html / index.html   the deliverable (version 2); everything inlined, open from disk
+v1.html                  version 1, frozen byte for byte, embedded at the bottom of the page
+template.html            page shell that build.js fills in
+build.js                 node build.js, writes demo.html + index.html
+src/core/                simulator, controllers, planner, workspace outline (browser + Node)
+src/ui/                  rendering (feeds, plan-view inset), charts, app wiring
+train/train.js           data generation + ensemble training (writes weights.json)
+train/workspace.js       reachable outline of the ideal model (writes workspace.json)
+train/eval.js            closed-loop evaluation tables, v1 and v2
+test/sanity.js           kinematics, truth-sim, planner and edge-target checks
 ```
 
 To retrain from scratch: `node train/train.js` (about 4 minutes on a laptop),
-then `node build.js`. Everything is deterministic via seeded RNGs.
+`node train/workspace.js`, then `node build.js`. Everything is deterministic via
+seeded RNGs.
 
 Bolgaç Gülen, August 2026

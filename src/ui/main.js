@@ -1,9 +1,12 @@
 // App wiring: two truth-sim instances (same seed, same disturbances), one per
 // controller, a shared clicked target, trial metrics, charts and the
-// scripted demo sequence.
+// scripted demo sequence. Version 2: both controllers sit under the same
+// plan-then-track layer (src/core/planner.js); the feeds draw the ideal
+// model's reachable outline and a plan-view inset.
 (function (CR) {
   'use strict';
-  const { pcc, camera, truth, ibvs, learned, render, chart } = CR;
+  const { pcc, camera, truth, ibvs, learned, render, chart, workspace } = CR;
+  const plannerMod = CR.planner;
 
   const W = 460, H = 345;
   const DT = 1 / 60;
@@ -43,18 +46,25 @@
     }
     return lower.slice(0, -1).concat(upper.slice(0, -1));
   }
-  // ---- views ----
+  // ---- controllers, planner, outlines ----
   const weights = typeof CR_WEIGHTS !== 'undefined' ? CR_WEIGHTS : null;
-  const learnedCtrl = learned.createLearned(weights);
+  const learnedBase = learned.createLearned(weights);
+  const planner = plannerMod.createPlanner(cam);
+  const classicalCtrl = plannerMod.createTracked(ibvs.createClassical(cam), planner, 'classical');
+  const learnedCtrl = learnedBase ? plannerMod.createTracked(learnedBase, planner, 'learned') : null;
 
-  const hull = learnedCtrl ? learnedCtrl.targetHull : computeHull();
+  // reachable outline of the ideal model (embedded by build.js, else computed)
+  const outline = (typeof CR_WORKSPACE !== 'undefined' && CR_WORKSPACE && CR_WORKSPACE.outline)
+    ? CR_WORKSPACE.outline : workspace.reachableOutline(cam);
+  // training-target envelope of the ensemble
+  const hull = learnedBase ? learnedBase.targetHull : computeHull();
   const hullCentroid = hull.reduce((a, p) => [a[0] + p[0] / hull.length, a[1] + p[1] / hull.length], [0, 0]);
 
   const views = {
     classical: {
       canvas: $('feed-classical'),
       sim: truth.createTruth(SEED),
-      ctrl: ibvs.createClassical(cam),
+      ctrl: classicalCtrl,
       accent: '#d95926',
       label: 'CAM 01 · CLASSICAL',
       lastOut: null,
@@ -94,12 +104,14 @@
     const c = [];
     if (payloadTarget > 0) c.push('payload');
     if (driftOn) c.push('drift');
-    if (px && !inHull(px)) c.push('ood target');
+    if (px && !workspace.pointInPolygon(px, outline)) c.push('beyond reach');
+    else if (px && !inHull(px)) c.push('outside envelope');
     return c.length ? c.join(' + ') : 'nominal';
   }
 
   function startTrial(px) {
     target = px;
+    for (const v of Object.values(views)) if (v.ctrl) v.ctrl.newTarget(px);
     trial = {
       id: ++trialCount,
       t0: t,
@@ -160,15 +172,12 @@
       const markersPx = v.sim.markers3().map((p) => cam.project(p));
       const tipPx = markersPx[3];
       let err = null;
-      if (target && tipPx && (key === 'classical' || v.ctrl)) {
+      if (target && tipPx && v.ctrl) {
         err = Math.hypot(tipPx[0] - target[0], tipPx[1] - target[1]);
-        if (key === 'classical') {
-          const qCmd = v.ctrl.step([tipPx[0], tipPx[1]], target, DT);
-          v.sim.setCommand(qCmd);
-        } else if (v.ctrl) {
-          const out = v.ctrl.step(markersPx, target, DT, W, H);
-          v.sim.setCommand(out.qCmd);
-          v.lastOut = out;
+        const out = v.ctrl.step(markersPx, target, DT, W, H);
+        v.sim.setCommand(out.qCmd);
+        v.lastOut = out;
+        if (key === 'learned') {
           sample.sigma = out.sigma;
           sample.ood = out.ood;
         }
@@ -209,12 +218,18 @@
         };
         fan = { members: v.lastOut.membersV.map(toPx), mean: toPx(v.lastOut.meanV) };
       }
+      const live = target && v.lastOut;
+      const phase = live ? (v.lastOut.tracking ? ' · TRACKING PLAN' : ' · IMAGE LOOP') : '';
       render.drawFeed(v.ctx, {
-        W, H, cam, sim: v.sim, accent: v.accent, target, hull,
+        W, H, cam, sim: v.sim, accent: v.accent, target, hull, outline,
+        sRef: live ? v.lastOut.sRef : null,
+        tracking: live ? v.lastOut.tracking : false,
+        plan: v.ctrl && target ? v.ctrl.plan() : null,
+        planView: true,
         fan,
         ood: key === 'learned' && v.ctrl && v.lastOut ? v.lastOut.ood : false,
         oodGain: learned.OOD_GAIN,
-        label: v.label + (key === 'learned' && !v.ctrl ? ' · NO WEIGHTS EMBEDDED' : ''),
+        label: v.label + phase + (key === 'learned' && !v.ctrl ? ' · NO WEIGHTS EMBEDDED' : ''),
         clickHint: !hadClick && !demo,
         t,
       });
@@ -313,6 +328,10 @@
     b: [0.45, 0.5, -0.7, 0.35],
     c: [1.6, 0.15, 0.2, -0.5],
     d: [0.8, -0.5, 0.9, 0.6],
+    // both segments curled the same way at the curvature limit: a workspace
+    // edge target that the version 1 loop cannot reach from the rest pose
+    // (it commits to the opposite bending plane and stalls; test/sanity.js)
+    edge: [2.2 * Math.cos(0.2), 2.2 * Math.sin(0.2), 2.6 * Math.cos(0.2), 2.6 * Math.sin(0.2)],
   };
   function inHull(p) {
     let inside = false;
@@ -352,7 +371,9 @@
       payloadTarget = 0; driftOn = false;
       resetAll();
     }, 'Nominal physics. Same targets for both controllers.');
-    add(0.8, () => startTrial(targetFromQ(TQ.a)));
+    add(0.8, () => startTrial(targetFromQ(TQ.edge)),
+      'A workspace-edge target. From this pose the version 1 loop stalls in the wrong bending plane; version 2 plans first, then closes the loop.');
+    add(6.4, () => startTrial(targetFromQ(TQ.a)), 'Interior targets. The plan costs a little time here; the numbers below keep score.');
     add(6.4, () => startTrial(targetFromQ(TQ.b)));
     add(6.4, () => startTrial(targetFromQ(TQ.c)));
     add(6.6, () => {
@@ -378,7 +399,10 @@
 
   function runDemo() {
     if (!demo) return;
-    while (demo.idx < demo.steps.length && t - demo.tStart >= demo.steps[demo.idx].at) {
+    // a step may call stopDemo(), which nulls demo; re-check each iteration
+    // (version 1 did not, threw here on the last step, and its animation loop
+    // died with the exception)
+    while (demo && demo.idx < demo.steps.length && t - demo.tStart >= demo.steps[demo.idx].at) {
       const st = demo.steps[demo.idx++];
       st.fn();
       if (st.note) $('demo-note').textContent = '▸ ' + st.note;
