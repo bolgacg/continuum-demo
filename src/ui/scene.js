@@ -228,18 +228,35 @@
       ctx.fillRect(basePx[0] - bw / 2, basePx[1] - bw / 2, bw, bw * 1.2);
     }
 
-    // markers, reference diamonds, fans
+    // markers, reference diamonds, fans. Two segments, one midpoint each:
+    // segment ends (end of segment 1, tip) are filled discs in a lighter tint
+    // of the accent; midpoints are hollow rings in the accent.
     for (const r of o.robots) {
       const markers = r.sim.markers3().map((p) => cam.project(p));
-      ctx.lineWidth = 2;
+      const rgb = hexToRgb(r.accent);
+      const light = `rgb(${rgb.map((c) => Math.round(c + (255 - c) * 0.45)).join(',')})`;
       for (let i = 0; i < markers.length; i++) {
         const m = markers[i];
         if (!m) continue;
-        ctx.strokeStyle = r.accent;
-        ctx.fillStyle = r.accent;
+        const isEnd = i === 1 || i === 3;
         ctx.beginPath();
-        ctx.arc(m[0], m[1], i < 3 ? 4.5 : 4, 0, 2 * Math.PI);
-        if (i < 3) ctx.stroke(); else { ctx.fill(); ctx.beginPath(); ctx.arc(m[0], m[1], 8, 0, 2 * Math.PI); ctx.stroke(); }
+        ctx.arc(m[0], m[1], isEnd ? 4.5 : 3.8, 0, 2 * Math.PI);
+        if (isEnd) {
+          ctx.fillStyle = light;
+          ctx.fill();
+          ctx.lineWidth = 1.2;
+          ctx.strokeStyle = r.accent;
+          ctx.stroke();
+        } else {
+          ctx.lineWidth = 1.6;
+          ctx.strokeStyle = r.accent;
+          ctx.stroke();
+        }
+        if (i === 3) {
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = r.accent;
+          ctx.beginPath(); ctx.arc(m[0], m[1], 8.5, 0, 2 * Math.PI); ctx.stroke();
+        }
       }
       const tip = markers[3];
       if (r.fan && tip) {

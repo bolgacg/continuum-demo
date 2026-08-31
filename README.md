@@ -25,31 +25,35 @@ automatically). Version 1, as published on 17 August, is kept byte for byte as
 
 ## Version 3, and why
 
-Version 1 simulated the robot in 3D and showed it through one perspective camera,
-and its controllers chased a clicked pixel. Three questions from a robotics
-researcher who looked at it pointed at what that produced:
+The simulation is 3D. Version 1 showed it through one 2D camera and gave the
+controllers a pixel to chase, and everything a robotics researcher questioned
+about it followed from that:
 
-1. **Artifacts of the view.** Markers seemed to slide apart and together and the
-   tube changed thickness. The geometry never changed: two segments of constant
-   arc length (1.0 and 0.8 normalized units), one constant-curvature arc per
-   segment, four markers at fixed arc positions, no joints, no cross-section. The
-   3D chord between neighbouring markers varies under 4%; the oblique camera
-   foreshortened it from about 1 px to about 60 px, and a decorative taper on the
-   drawn tube made it worse. Version 3 has an orbiting inspector with side, top
-   and isometric presets, a constant drawn radius, and the side sensor's own view
-   next to it.
-2. **A point target was a line target.** With one camera an image point fixes two
-   of the tip's three coordinates; depth along the viewing ray was never observed
-   and never asked for, so the loop accepted any point on the ray. That is the
-   known limitation of a single point feature, and for a surgical robot it is the
-   wrong task. It also produced the path dependence a reader could provoke (a
-   pixel is reachable from several bending planes, and a local law picks one
-   greedily). Version 3 senses with two fixed calibrated cameras (side and top),
-   triangulates the four markers, and gives both controllers the same 3D estimate
-   and a 3D target. A click in the inspector gives a ray; the height plane in the
-   side view turns the ray back into a point. The cameras add no noise, so the
-   triangulation is exact (a test asserts it below 1e-9).
-3. **The boundary.** Version 1 drew the convex hull of the training targets in the
+1. **The point was a ray.** With one camera an image point fixes two of the tip's
+   three coordinates; depth along the viewing ray was never observed and never
+   asked for, so the loop accepted any point on that line. The known limitation of
+   a single point feature, and the wrong task for a robot that has to reach a
+   point.
+2. **The markers seemed to move along the robot.** Perspective: a segment bending
+   toward the camera projected long, one bending away projected short, and the
+   tube was drawn wider when nearer. In 3D the chord between neighbouring markers
+   varies under 4%; in that image it ran from about 1 px to about 60 px. A
+   decorative taper on the drawn tube made it worse. The geometry never changed:
+   two segments of constant arc length (1.0 and 0.8), one constant-curvature arc
+   per segment, four markers at fixed arc positions, no joints, no cross-section.
+3. **Reaching looked more inconsistent than it was.** A pixel is reachable from
+   several bending planes and a local law picks one greedily; from some poses it
+   committed to the wrong plane, hit the curvature limit and stalled. In 2D that
+   reads as random; in 3D it is a hidden degree of freedom.
+
+Version 3 senses with two fixed calibrated cameras (side and top), triangulates
+the four markers, and gives both controllers the same 3D estimate and a 3D
+target. A click in the orbiting inspector gives a ray; the height plane in the
+side sensor view turns the ray back into a point. The inspector has side, top and
+isometric presets, the tube a constant radius, and the markers two classes
+(filled at segment ends, hollow at midpoints). Two further changes and a fix:
+
+4. **The boundary.** Version 1 drew the convex hull of the training targets in the
    image and called it close to the reachable set; it was not (about 35 px short
    where the robot curls back). Version 3 draws the reachable set in 3D: 200,000
    sampled configurations at the curvature limits, tips binned by direction
@@ -57,7 +61,7 @@ researcher who looked at it pointed at what that produced:
    scaled so 99.9% of samples are inside (`train/workspace.js`). It is an outer
    envelope; reachability of a given target is decided by the planner's inverse
    kinematics, and the trial table says "beyond reach" when it fails.
-4. **Inverse kinematics.** Version 1 solved none; both controllers were local
+5. **Inverse kinematics.** Version 1 solved none; both controllers were local
    laws. Version 3 keeps local feedback laws on the 3D error (classical: damped
    pseudo-inverse of the ideal model's 3x4 Jacobian; learned: a regressed 4x3
    gain matrix from triangulated markers and the 3D error) and adds a planning
@@ -68,7 +72,7 @@ researcher who looked at it pointed at what that produced:
    the rate limit, and each controller tracking that reference with feed-forward
    plus its own feedback. Whether the plan is needed with the 3D task is measured
    below, not assumed; the page has a "Plan first" switch.
-5. **Bug.** The last step of version 1's scripted demo threw an exception that
+6. **Bug.** The last step of version 1's scripted demo threw an exception that
    stopped the animation loop. Fixed; `v1.html` keeps the bug because it keeps
    everything.
 

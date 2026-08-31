@@ -124,12 +124,12 @@
       simulated truth is the point.
     </p>
     <p class="intro" style="margin-top:10px">
-      <b>Version 3.</b> The first version showed a 3D simulation through one 2D camera and
-      gave the controllers a pixel to chase. Most of what looked odd about it (markers that
-      seemed to slide, a tube that changed thickness, a robot that reached a target from one
-      pose and not another) came from that, and the task itself was under-specified: with one
-      camera an image point is a line in space. This version fixes the sensing, the task and the
-      views, and says what each change cost. <a href="#changes">What changed, and why</a>.
+      <b>Version 3.</b> The simulation is 3D. Version 1 showed it through one 2D camera, and
+      everything that looked wrong followed from that: a clicked point was really a ray, so the
+      controllers reached for any point on a line; the markers seemed to change spacing when
+      only the perspective did; and a target reached from one pose and not from another looked
+      more inconsistent than it was. This version fixes the sensing, the task and the views,
+      and says what each change cost. <a href="#changes">What changed, and why</a>.
       Version 1 is kept unchanged at the <a href="#v1">bottom of the page</a>.
     </p>
   </header>
@@ -228,13 +228,18 @@
   <h2 id="changes">What changed in version 3, and why</h2>
 
   <div class="change">
-    <h3>1. Most of what version 1 showed was an artifact of the view</h3>
-    <p>Version 1 simulated the robot in three dimensions and showed it through one perspective camera placed off to the side. A segment bending toward that camera projected long, one bending away projected short, and the tube was drawn wider when nearer, as any camera would. The robot's geometry never changed: two segments of constant arc length (1.0 and 0.8 in normalized units), one constant-curvature arc per segment, four markers at fixed arc positions, no joints, no cross-section. In 3D the chord between neighbouring markers varies by under 4%; in that image it ran from about 1 px to about 60 px. Version 1 also drew the tube tapered from base to tip purely for looks, which suggested a geometry that was never modelled. A reader had no way to tell any of this from the page. Version 3 shows the same simulation from an orbiting inspector with side, top and isometric presets, draws a constant radius, and lets the side sensor's own view be compared with the others.</p>
+    <h3>1. The simulation is 3D. Version 1 showed it through one 2D camera</h3>
+    <p>The robot bends in three dimensions: two segments of constant arc length (1.0 and 0.8 in normalized units), one constant-curvature arc per segment with a curvature vector that picks the bending plane, three tendons per segment, four markers at fixed arc positions, no joints, no cross-section. Version 1 rendered that through a single perspective camera placed off to the side and gave the controllers a pixel to chase. Three things followed.</p>
+    <p><b>The point was a ray.</b> With one camera an image point fixes two of the tip's three coordinates. Depth along the viewing ray was never observed and never asked for, so the loop accepted any point on that line as success. In visual-servoing terms this is the known limitation of a single point feature; for a robot that has to reach a point it is the wrong task.</p>
+    <p><b>The markers seemed to move along the robot.</b> A segment bending toward the camera projected long, one bending away projected short, and the tube was drawn wider when nearer, as any camera would. In 3D the chord between neighbouring markers varies by under 4%; in that image it ran from about 1 px to about 60 px. A decorative taper on the drawn tube made it worse. Nothing in the geometry ever changed.</p>
+    <p><b>Reaching looked more inconsistent than it was.</b> A pixel is reachable from several bending planes, and a local law picks one greedily. From one pose the loop found a plane that reaches the target; from another it committed to the wrong plane, hit the curvature limit and stalled short. Seen in 2D that reads as random; in 3D it is a controller with a hidden degree of freedom.</p>
   </div>
 
   <div class="change">
-    <h3>2. A point target was a line target</h3>
-    <p>Version 1's controllers chased a clicked pixel. With one camera an image point fixes two of the tip's three coordinates; the third, depth along the viewing ray, was never observed and never asked for, so the loop accepted any point on that ray as success. In visual-servoing terms this is the known limitation of a single point feature, and the remedies are more features, a second view, or a depth constraint. For a surgical robot the task is a point, not a line, so the task definition was wrong for the application, and it also produced the path dependence a reader could provoke: a target pixel is reachable from several bending planes, and a local law picked one greedily. Version 3 uses two fixed, calibrated cameras (CAM 01 side, CAM 02 top), triangulates the four markers to 3D points, and gives both controllers the same 3D estimate and a 3D target. A click in the inspector still gives a ray; the height plane in the side view turns the ray back into a point. The cameras add no noise, so the triangulation is exact; the page does not pretend otherwise.</p>
+    <h3>2. What version 3 changes for that</h3>
+    <p><b>Sensing and task.</b> Two fixed, calibrated cameras (CAM 01 side, CAM 02 top) see the four markers; each marker is triangulated and both controllers get the same 3D estimate and a 3D target with a 3D error. The cameras add no noise, so the triangulation is exact; the page does not pretend otherwise.</p>
+    <p><b>Placing a target.</b> A click in the inspector still gives a ray. The height plane in the side sensor view turns the ray back into a point; move the plane and the target slides along the same ray.</p>
+    <p><b>Views.</b> The inspector orbits the workspace (drag), with side, top and isometric presets; the side and top presets are the sensors' own poses, so what the controllers see can be compared with any other angle. The tube is drawn with one constant radius. Segment ends are filled markers, midpoints hollow rings: two segments, one midpoint each.</p>
   </div>
 
   <div class="change">
@@ -270,7 +275,7 @@
   <ul class="notes">
     <li>Both controllers see exactly the same thing: four markers triangulated from two fixed cameras. Neither reads simulator state. The inspector is for you, not for them.</li>
     <li>The two robots are identical simulator instances with the same random seed, so the comparison is fair. Both sit under the same planner, and the planner can be switched off for both.</li>
-    <li>The robot's geometry is fixed: constant arc lengths, constant curvature per segment, markers at fixed arc positions. What changed on screen in version 1 was perspective.</li>
+    <li>The robot's geometry is fixed: constant arc lengths, constant curvature per segment, markers at fixed arc positions (filled at the segment ends, hollow at the midpoints). What changed on screen in version 1 was perspective.</li>
     <li>The "truth" simulator is phenomenological: constant curvature plus actuator lag, tendon backlash, gravity droop, inter-segment coupling and optional tendon drift. Its curvature is biased by load, not redistributed along the arc, so it stays in the constant-curvature shape family; a rod model would be the next step, and the model mismatch here is milder than a real tendon-driven robot's.</li>
     <li>The learned controller imitates a training-time expert that could see the simulator's true Jacobian. At run time it has no such access. Three signals, all set from data, flag extrapolation: the target outside the population its training targets were drawn from (tips at up to 90% of the curvature limits, decided by the same inverse kinematics with the limits scaled to 90%), the feature vector far from the training set, or the five networks disagreeing. Any of them and it says so and lowers its own gain; the plan's feed-forward is not scaled, because it does not come from the networks.</li>
     <li>The translucent envelope is the outer boundary of the ideal model's reachable set. The truth robot never leaves it; the planner decides reachability point by point.</li>
