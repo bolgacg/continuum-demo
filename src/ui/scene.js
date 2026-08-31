@@ -79,7 +79,6 @@
       fillQuads(far.g, tq.far, 'rgba(0,0,0,0)', 'rgba(57,135,229,0.16)');
       fillQuads(near.g, tq.near, 'rgba(0,0,0,0)', 'rgba(57,135,229,0.11)');
     }
-    drawTable(far.g, cam);
     if (volume && volume.show && volume.mesh) {
       // smooth silhouette from the full-resolution mesh, wireframe from a
       // coarser one; both rasterized once per camera pose
@@ -93,28 +92,6 @@
     entry = { sig, far: far.c, near: near.c };
     layerCache.set(key, entry);
     return entry;
-  }
-
-  // The robot stands on a table plate at z = 0 (drawn only; no contact is
-  // modelled, and the height plane cannot be lowered below it).
-  const TABLE_R = 0.7;
-  function drawTable(ctx, cam) {
-    const ring = [];
-    for (let k = 0; k <= 48; k++) {
-      const a = (k / 48) * 2 * Math.PI;
-      const p = cam.project([TABLE_R * Math.cos(a), TABLE_R * Math.sin(a), 0]);
-      if (!p) return;
-      ring.push(p);
-    }
-    ctx.beginPath();
-    ctx.moveTo(ring[0][0], ring[0][1]);
-    for (let k = 1; k < ring.length; k++) ctx.lineTo(ring[k][0], ring[k][1]);
-    ctx.closePath();
-    ctx.fillStyle = 'rgba(58,61,57,0.55)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(138,143,136,0.35)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
   }
 
   function drawPlane(ctx, cam, h, o) {

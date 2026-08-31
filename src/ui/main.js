@@ -17,7 +17,7 @@
   const SETTLE_U = 0.05;          // 5 mm settle band
   const SETTLE_HOLD = 0.8, TRIAL_S = 6;
   const FAN_HORIZON = 0.35;       // seconds of predicted motion shown by the fan
-  const PLANE_MIN = 0.05, PLANE_MAX = 2.1; // height plane range (z): above the table the robot stands on
+  const PLANE_MIN = -0.95, PLANE_MAX = 2.1; // height plane range (z): the whole reach, below the base included
   const FLEX_RANGE = pcc.FLEX_RANGE;
 
   const $ = (id) => document.getElementById(id);
@@ -473,9 +473,10 @@
     b: [0.45, 0.5, -0.7, 0.35],
     c: [1.6, 0.15, 0.2, -0.5],
     d: [0.8, -0.5, 0.9, 0.6],
-    // far lateral edge of the workspace above the table (segment 1 at 75% of
-    // its limit, segment 2 at 50%, same bending plane)
-    edge: [2.2 * 0.75 * Math.cos(4.2), 2.2 * 0.75 * Math.sin(4.2), 2.6 * 0.5 * Math.cos(4.2), 2.6 * 0.5 * Math.sin(4.2)],
+    // both segments curled the same way at the curvature limit: the tip ends
+    // below the base, at the far edge of the workspace; from the rest pose the
+    // direct classical law commits to the wrong bending plane and stalls there
+    edge: [2.2 * Math.cos(0.2), 2.2 * Math.sin(0.2), 2.6 * Math.cos(0.2), 2.6 * Math.sin(0.2)],
   };
   const T3 = (q) => pcc.tip3(q);
   // just above the straight arm's reach (tip at z = 1.8), visible in both views
@@ -500,7 +501,7 @@
       resetAll();
     }, 'Nominal physics, planner OFF: the direct feedback laws, from the rest pose.');
     add(0.8, () => demoTarget(T3(TQ.edge)),
-      'A target at the far edge of the workspace, direct feedback laws only. The table below keeps score.');
+      'A workspace-edge target, curled back below the base, direct feedback laws only. The classical law commits to the wrong bending plane and stalls short of it.');
     add(6.6, () => { setPlan(true); }, 'Planner ON: inverse kinematics on the model first, then the same laws track the plan. Same target, same pose.');
     add(0.4, () => demoTarget(T3(TQ.edge)));
     add(6.4, () => demoTarget(T3(TQ.a)), 'Interior targets. The plan costs a little time here; the table keeps score.');

@@ -4,8 +4,8 @@
 // Display convention: 1 length unit = 100 mm.
 //
 // Two target sets: "interior" (tips of random configurations at up to 85% of
-// the curvature limit) and "edge" (tips at 95 to 100% of the limit), both
-// restricted to above the table the upright robot stands on. Each
+// the curvature limit) and "edge" (tips at 95 to 100% of the limit), anywhere
+// in the reach. Each
 // controller runs as the direct law and under the plan-then-track layer.
 // Run: node train/eval.js   Prints markdown tables for the README and page.
 'use strict';
@@ -59,14 +59,8 @@ function runTrial(kind, mode, cond, targetSet, seed) {
 
   const ctrl = makeCtrl(kind, mode);
   ctrl.reset(q0);
-  // targets above the table the robot stands on (z >= 0.05); the curled-back
-  // region below the base is physically blocked and not evaluated
-  let target = null;
-  for (let tries = 0; tries < 200 && !target; tries++) {
-    const p = CR.pcc.tip3(targetSet === 'edge' ? randomQ(rng, 0.95, 1.0) : randomQ(rng, 0, 0.85));
-    if (p[2] >= 0.05) target = p;
-  }
-  if (!target) return null;
+  // targets anywhere in the reach, the curled-back region below the base included
+  const target = CR.pcc.tip3(targetSet === 'edge' ? randomQ(rng, 0.95, 1.0) : randomQ(rng, 0, 0.85));
 
   let bandEnter = null, settle = null, oodSteps = 0;
   const tail = [];

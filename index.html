@@ -255,7 +255,7 @@
     <p><b>Sensing and task.</b> Two fixed, calibrated cameras (CAM 01 side, CAM 02 top) see the four markers; each marker is triangulated and both controllers get the same 3D estimate and a 3D target with a 3D error. The cameras add no noise, so the triangulation is exact; the page does not pretend otherwise.</p>
     <p><b>Placing a target.</b> A click in the inspector still gives a ray. The height plane, set with the vertical slider beside the side sensor view (thumb and plane line sit at the same height) or by dragging the plane itself, turns the ray back into a point; move the plane and the target slides along the same ray. The outline drawn at the plane's height is the reachable set's cross-section there, from a sampled occupancy grid: near the base it is a ring, because a robot of fixed length cannot bring its tip next to its own base. Click inside it and the target is reachable; outside it the trial is marked beyond reach, the plan stops at the closest reachable point, and the ensemble flags a target it was never shown.</p>
     <p><b>Flexibility.</b> The crescent is the mechanism, not the controller: what the tip can reach is set by the segment lengths and the curvature limits, and no amount of training moves it. The Flexibility slider scales the curvature limits (×1.0 is the original 126° and 119° per segment; ×1.8 is about 227° and 214°), and the planner, the envelope and the outline follow. The ensemble was trained across the whole range, so its warning refers to targets outside what the most flexible setting was ever asked to reach.</p>
-    <p><b>Orientation.</b> The robot stands on its base with the axis up and gravity along the axis. An upright straight robot does not sag; the further a segment leans, the larger the component of gravity across it, and the simulator's droop grows with that lean and with the payload. Version 1's horizontal cantilever sagged everywhere; this is the more honest picture for a bench-mounted robot, and the one the ensemble is now trained on.</p>
+    <p><b>Orientation.</b> The robot stands on its base with the axis up and gravity along the axis; nothing blocks the space under the base, and the height plane covers the whole reach. An upright straight robot does not sag; the further a segment leans, the larger the component of gravity across it, and the simulator's droop grows with that lean and with the payload. Version 1's horizontal cantilever sagged everywhere; this is the more honest picture for a bench-mounted robot, and the one the ensemble is now trained on.</p>
     <p><b>Views.</b> The inspector orbits the workspace (drag), with side, top and isometric presets; the side and top presets are the sensors' own poses, so what the controllers see can be compared with any other angle. The tube is drawn with one constant radius. Segment ends are filled markers, midpoints hollow rings: two segments, one midpoint each.</p>
   </div>
 
@@ -267,7 +267,7 @@
   <div class="change">
     <h3>4. Inverse kinematics</h3>
     <p><b>Version 1 solved none.</b> Both controllers were local laws: the classical one a damped pseudo-inverse of the ideal model's pixel Jacobian at its believed configuration, integrated into a curvature command; the learned one a regressed gain matrix of the same shape. Nothing chose a configuration deliberately. <b>Version 3</b> keeps local feedback laws on the 3D error (the classical one now differentiates the ideal model for a 3×4 Jacobian; the ensemble was retrained on triangulated markers and a 3D error) and adds a planning layer above both: when a target is set, the inverse kinematics is solved numerically on the ideal model (a coarse global search over 12,000 sampled configurations for those whose tip lands near the target, the one nearest the current configuration refined by damped Gauss-Newton inside the curvature limits; if nothing reaches the target, the closest reachable point), a straight configuration path runs to it at 60% of the actuator rate limit, and each controller tracks that reference with feed-forward plus its own feedback. When the path ends, the loop is the direct law again. The plan is only as good as the ideal model; under payload the feedback term carries the difference.</p>
-    <p><b>Is the plan needed with a 3D target?</b> Measured, not assumed: the "Plan first" switch above turns it off, and the table below reports both, for targets above the table the robot stands on. On interior targets the direct laws settle 36 of 40 and the plan takes both to 40 of 40 at a cost of about 0.3 s. On edge targets the direct classical law loses 12 of 40 and stalls about 12 mm short (it commits to a bending plane from which the target is not reachable within the curvature limits); the direct learned law loses 3; the plan takes both to 40 of 40 and keeps the advantage under payload and drift. A null-space term (curvature minimization, or a pull toward a good configuration) was tried before the planner and moved the numbers only slightly, because the failure is a basin, not the redundancy resolution. The curled-back region below the base, where an earlier build had found the direct laws stalling more than 100 mm short, is behind the table now and out of the evaluation.</p>
+    <p><b>Is the plan needed with a 3D target?</b> Measured, not assumed: the "Plan first" switch above turns it off, and the table below reports both, for targets anywhere in the reach, the curled-back region below the base included. On interior targets the direct laws settle 36 of 40 and the plan takes both to 40 of 40 at a cost of about 0.3 s. On edge targets the direct classical law loses 12 of 40 and stalls about 12 mm short (it commits to a bending plane from which the target is not reachable within the curvature limits); the direct learned law loses 3; the plan takes both to 40 of 40 and keeps the advantage under payload and drift. A null-space term (curvature minimization, or a pull toward a good configuration) was tried before the planner and moved the numbers only slightly, because the failure is a basin, not the redundancy resolution.</p>
     <p><b>What training across the flexibility range cost.</b> One ensemble now covers every mechanism the slider can set. A first attempt at the original size fell behind the classical law under payload; doubling the data and enlarging the network (93,600 samples, hidden layers of 64 and 48) brought it back: ahead of the classical law under payload and on edge targets, level under payload with drift, slightly behind under drift alone. The table shows all of it.</p>
   </div>
 
@@ -1828,7 +1828,6 @@ const CR_WORKSPACE = {"meta":{"date":"2026-08-31","note":"train: same constructi
       fillQuads(far.g, tq.far, 'rgba(0,0,0,0)', 'rgba(57,135,229,0.16)');
       fillQuads(near.g, tq.near, 'rgba(0,0,0,0)', 'rgba(57,135,229,0.11)');
     }
-    drawTable(far.g, cam);
     if (volume && volume.show && volume.mesh) {
       // smooth silhouette from the full-resolution mesh, wireframe from a
       // coarser one; both rasterized once per camera pose
@@ -1842,28 +1841,6 @@ const CR_WORKSPACE = {"meta":{"date":"2026-08-31","note":"train: same constructi
     entry = { sig, far: far.c, near: near.c };
     layerCache.set(key, entry);
     return entry;
-  }
-
-  // The robot stands on a table plate at z = 0 (drawn only; no contact is
-  // modelled, and the height plane cannot be lowered below it).
-  const TABLE_R = 0.7;
-  function drawTable(ctx, cam) {
-    const ring = [];
-    for (let k = 0; k <= 48; k++) {
-      const a = (k / 48) * 2 * Math.PI;
-      const p = cam.project([TABLE_R * Math.cos(a), TABLE_R * Math.sin(a), 0]);
-      if (!p) return;
-      ring.push(p);
-    }
-    ctx.beginPath();
-    ctx.moveTo(ring[0][0], ring[0][1]);
-    for (let k = 1; k < ring.length; k++) ctx.lineTo(ring[k][0], ring[k][1]);
-    ctx.closePath();
-    ctx.fillStyle = 'rgba(58,61,57,0.55)';
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(138,143,136,0.35)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
   }
 
   function drawPlane(ctx, cam, h, o) {
@@ -2443,7 +2420,7 @@ const CR_WORKSPACE = {"meta":{"date":"2026-08-31","note":"train: same constructi
   const SETTLE_U = 0.05;          // 5 mm settle band
   const SETTLE_HOLD = 0.8, TRIAL_S = 6;
   const FAN_HORIZON = 0.35;       // seconds of predicted motion shown by the fan
-  const PLANE_MIN = 0.05, PLANE_MAX = 2.1; // height plane range (z): above the table the robot stands on
+  const PLANE_MIN = -0.95, PLANE_MAX = 2.1; // height plane range (z): the whole reach, below the base included
   const FLEX_RANGE = pcc.FLEX_RANGE;
 
   const $ = (id) => document.getElementById(id);
@@ -2899,9 +2876,10 @@ const CR_WORKSPACE = {"meta":{"date":"2026-08-31","note":"train: same constructi
     b: [0.45, 0.5, -0.7, 0.35],
     c: [1.6, 0.15, 0.2, -0.5],
     d: [0.8, -0.5, 0.9, 0.6],
-    // far lateral edge of the workspace above the table (segment 1 at 75% of
-    // its limit, segment 2 at 50%, same bending plane)
-    edge: [2.2 * 0.75 * Math.cos(4.2), 2.2 * 0.75 * Math.sin(4.2), 2.6 * 0.5 * Math.cos(4.2), 2.6 * 0.5 * Math.sin(4.2)],
+    // both segments curled the same way at the curvature limit: the tip ends
+    // below the base, at the far edge of the workspace; from the rest pose the
+    // direct classical law commits to the wrong bending plane and stalls there
+    edge: [2.2 * Math.cos(0.2), 2.2 * Math.sin(0.2), 2.6 * Math.cos(0.2), 2.6 * Math.sin(0.2)],
   };
   const T3 = (q) => pcc.tip3(q);
   // just above the straight arm's reach (tip at z = 1.8), visible in both views
@@ -2926,7 +2904,7 @@ const CR_WORKSPACE = {"meta":{"date":"2026-08-31","note":"train: same constructi
       resetAll();
     }, 'Nominal physics, planner OFF: the direct feedback laws, from the rest pose.');
     add(0.8, () => demoTarget(T3(TQ.edge)),
-      'A target at the far edge of the workspace, direct feedback laws only. The table below keeps score.');
+      'A workspace-edge target, curled back below the base, direct feedback laws only. The classical law commits to the wrong bending plane and stalls short of it.');
     add(6.6, () => { setPlan(true); }, 'Planner ON: inverse kinematics on the model first, then the same laws track the plan. Same target, same pose.');
     add(0.4, () => demoTarget(T3(TQ.edge)));
     add(6.4, () => demoTarget(T3(TQ.a)), 'Interior targets. The plan costs a little time here; the table keeps score.');

@@ -134,22 +134,16 @@ const camSide = camera.sideCamera(W, H), camTop = camera.topCamera(W, H);
   r = run('learned', 'direct', tIn, 6, 1);
   check('learned direct under payload (<5 mm)', r.err < 0.05, (r.err * 100).toFixed(2) + ' mm');
 
-  const edgeQ = [2.2 * 0.75 * Math.cos(4.2), 2.2 * 0.75 * Math.sin(4.2), 2.6 * 0.5 * Math.cos(4.2), 2.6 * 0.5 * Math.sin(4.2)];
+  const edgeQ = [2.2 * Math.cos(0.2), 2.2 * Math.sin(0.2), 2.6 * Math.cos(0.2), 2.6 * Math.sin(0.2)];
   const tEdge = pcc.tip3(edgeQ);
-  check('demo edge target sits above the table', tEdge[2] > 0.05, tEdge.map((v) => v.toFixed(2)).join(','));
   const ik = pl.solveIK(tEdge, Q0);
   check('IK reaches the edge target (<1 mm residual)', ik.residual < 0.01, (ik.residual * 100).toFixed(3) + ' mm');
   const c1 = run('classical', 'direct', tEdge, 8).err, c2 = run('classical', 'planned', tEdge, 8).err;
   const l1 = run('learned', 'direct', tEdge, 8).err, l2 = run('learned', 'planned', tEdge, 8).err;
-  // direct-law results are reported, not asserted: train/eval.js has the population view
-  console.log('  info edge target from rest, direct: classical ' + (c1 * 100).toFixed(1) + ' mm, learned ' + (l1 * 100).toFixed(1) + ' mm');
-  check('planned classical reaches the edge target (<5 mm)', c2 < 0.05, (c2 * 100).toFixed(1) + ' mm');
-  check('planned learned reaches the edge target (<5 mm)', l2 < 0.05, (l2 * 100).toFixed(1) + ' mm');
-  // the curled-back hook below the base is the basin trap the old horizontal frame exposed
-  const hookQ = [2.2 * Math.cos(0.2), 2.2 * Math.sin(0.2), 2.6 * Math.cos(0.2), 2.6 * Math.sin(0.2)];
-  const tHook = pcc.tip3(hookQ);
-  const h1 = run('classical', 'direct', tHook, 8).err, h2 = run('classical', 'planned', tHook, 8).err;
-  check('below-base hook target: direct classical stalls (>20 mm), planned reaches (<5 mm)', h1 > 0.2 && h2 < 0.05, (h1 * 100).toFixed(1) + ' / ' + (h2 * 100).toFixed(1) + ' mm');
+  check('demo edge target (curled back below the base): direct classical stalls (>20 mm)', c1 > 0.2, (c1 * 100).toFixed(1) + ' mm');
+  check('planned classical reaches it (<5 mm)', c2 < 0.05, (c2 * 100).toFixed(1) + ' mm');
+  console.log('  info direct learned on the same target from rest: ' + (l1 * 100).toFixed(1) + ' mm');
+  check('planned learned reaches it (<5 mm)', l2 < 0.05, (l2 * 100).toFixed(1) + ' mm');
 
   // tracking form with a fixed reference and no feed-forward is the direct law
   const a = ibvs.createClassical(), b = ibvs.createClassical();

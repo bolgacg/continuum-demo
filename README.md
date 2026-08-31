@@ -46,7 +46,7 @@ about it followed from that:
    committed to the wrong plane, hit the curvature limit and stalled. In 2D that
    reads as random; in 3D it is a hidden degree of freedom.
 
-Version 3 stands the robot upright on a table plate, axis up and gravity along
+Version 3 stands the robot upright on its base, axis up and gravity along
 the axis (a straight upright robot does not sag; a leaning one sags in
 proportion to its lean and the payload), senses with two fixed calibrated
 cameras (side and top), triangulates the four markers, and gives both
@@ -153,9 +153,6 @@ error over the final second. Display convention: the model is dimensionless;
 lengths are shown as if the robot were 180 mm long (1 unit = 100 mm). Edge
 targets are tips at 95 to 100% of the curvature limit; interior targets up to
 85%. `node train/eval.js` reproduces both tables.
-
-Targets are restricted to above the table the upright robot stands on (z of
-at least 5 mm).
 
 <!--EVAL_TABLES-->
 ### Interior targets
