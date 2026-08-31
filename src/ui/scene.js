@@ -394,7 +394,7 @@
       const msg = o.clickHint;
       const pulse = 0.55 + 0.45 * Math.sin(o.t * 2.2);
       ctx.globalAlpha = 0.35 + 0.4 * pulse;
-      ctx.fillText(msg, (W - ctx.measureText(msg).width) / 2, H / 2 - 40);
+      ctx.fillText(msg, (W - ctx.measureText(msg).width) / 2, H - 60);
       ctx.globalAlpha = 1;
     }
     ctx.restore();
