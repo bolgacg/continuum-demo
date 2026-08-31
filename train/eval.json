@@ -119,9 +119,9 @@
    "condition": "nominal",
    "controller": "classical",
    "cells": [
-    "28/40",
-    "1.45 s",
-    "12.2 mm",
+    "22/40",
+    "1.47 s",
+    "24.5 mm",
     "40/40",
     "2.02 s",
     "0.4 mm"
@@ -133,11 +133,11 @@
    "condition": "nominal",
    "controller": "learned",
    "cells": [
-    "37/40",
+    "35/40",
     "1.87 s",
-    "8.6 mm",
+    "3.9 mm",
     "40/40",
-    "1.98 s",
+    "2.00 s",
     "0.5 mm"
    ],
    "ood": "0% of steps"
@@ -147,12 +147,12 @@
    "condition": "payload",
    "controller": "classical",
    "cells": [
-    "27/40",
-    "1.58 s",
-    "12.8 mm",
+    "24/40",
+    "1.62 s",
+    "23.9 mm",
     "40/40",
     "2.18 s",
-    "0.9 mm"
+    "1.0 mm"
    ],
    "ood": "–"
   },
@@ -161,12 +161,12 @@
    "condition": "payload",
    "controller": "learned",
    "cells": [
-    "35/40",
-    "1.77 s",
-    "1.8 mm",
+    "34/40",
+    "1.83 s",
+    "2.1 mm",
     "40/40",
-    "1.95 s",
-    "0.7 mm"
+    "1.97 s",
+    "0.6 mm"
    ],
    "ood": "0% of steps"
   },
@@ -175,54 +175,54 @@
    "condition": "drift",
    "controller": "classical",
    "cells": [
-    "25/40",
-    "2.30 s",
-    "15.2 mm",
-    "40/40",
-    "2.28 s",
-    "2.5 mm"
+    "20/40",
+    "1.93 s",
+    "26.4 mm",
+    "37/40",
+    "2.10 s",
+    "3.0 mm"
    ],
    "ood": "–"
   },
   {
    "targets": "edge",
    "condition": "drift",
+   "controller": "learned",
+   "cells": [
+    "29/40",
+    "2.12 s",
+    "6.3 mm",
+    "39/40",
+    "2.13 s",
+    "3.0 mm"
+   ],
+   "ood": "0% of steps"
+  },
+  {
+   "targets": "edge",
+   "condition": "payload + drift",
+   "controller": "classical",
+   "cells": [
+    "20/40",
+    "2.43 s",
+    "25.4 mm",
+    "38/40",
+    "2.85 s",
+    "2.8 mm"
+   ],
+   "ood": "–"
+  },
+  {
+   "targets": "edge",
+   "condition": "payload + drift",
    "controller": "learned",
    "cells": [
     "33/40",
-    "2.30 s",
-    "10.6 mm",
-    "40/40",
-    "2.35 s",
-    "2.5 mm"
-   ],
-   "ood": "0% of steps"
-  },
-  {
-   "targets": "edge",
-   "condition": "payload + drift",
-   "controller": "classical",
-   "cells": [
-    "25/40",
-    "2.70 s",
-    "15.0 mm",
+    "2.02 s",
+    "4.0 mm",
     "38/40",
-    "3.05 s",
-    "3.1 mm"
-   ],
-   "ood": "–"
-  },
-  {
-   "targets": "edge",
-   "condition": "payload + drift",
-   "controller": "learned",
-   "cells": [
-    "31/40",
-    "2.23 s",
-    "4.3 mm",
-    "38/40",
-    "2.47 s",
-    "2.9 mm"
+    "2.37 s",
+    "2.7 mm"
    ],
    "ood": "0% of steps"
   }

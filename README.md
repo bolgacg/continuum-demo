@@ -172,28 +172,27 @@ targets are tips at 95 to 100% of the curvature limit; interior targets up to
 
 | condition | controller | direct settled | direct median settle | direct steady-state | planned settled | planned median settle | planned steady-state |
 |---|---|---|---|---|---|---|---|
-| nominal | classical | 28/40 | 1.45 s | 12.2 mm | 40/40 | 2.02 s | 0.4 mm |
-| nominal | learned | 37/40 | 1.87 s | 8.6 mm | 40/40 | 1.98 s | 0.5 mm |
-| payload | classical | 27/40 | 1.58 s | 12.8 mm | 40/40 | 2.18 s | 0.9 mm |
-| payload | learned | 35/40 | 1.77 s | 1.8 mm | 40/40 | 1.95 s | 0.7 mm |
-| drift | classical | 25/40 | 2.30 s | 15.2 mm | 40/40 | 2.28 s | 2.5 mm |
-| drift | learned | 33/40 | 2.30 s | 10.6 mm | 40/40 | 2.35 s | 2.5 mm |
-| payload + drift | classical | 25/40 | 2.70 s | 15.0 mm | 38/40 | 3.05 s | 3.1 mm |
-| payload + drift | learned | 31/40 | 2.23 s | 4.3 mm | 38/40 | 2.47 s | 2.9 mm |
+| nominal | classical | 22/40 | 1.47 s | 24.5 mm | 40/40 | 2.02 s | 0.4 mm |
+| nominal | learned | 35/40 | 1.87 s | 3.9 mm | 40/40 | 2.00 s | 0.5 mm |
+| payload | classical | 24/40 | 1.62 s | 23.9 mm | 40/40 | 2.18 s | 1.0 mm |
+| payload | learned | 34/40 | 1.83 s | 2.1 mm | 40/40 | 1.97 s | 0.6 mm |
+| drift | classical | 20/40 | 1.93 s | 26.4 mm | 37/40 | 2.10 s | 3.0 mm |
+| drift | learned | 29/40 | 2.12 s | 6.3 mm | 39/40 | 2.13 s | 3.0 mm |
+| payload + drift | classical | 20/40 | 2.43 s | 25.4 mm | 38/40 | 2.85 s | 2.8 mm |
+| payload + drift | learned | 33/40 | 2.02 s | 4.0 mm | 38/40 | 2.37 s | 2.7 mm |
 <!--/EVAL_TABLES-->
 
 The ensemble flagged nothing in these conditions: every target lies inside the
 population it was trained on (tips at up to 90% of the limits, flexibility up
 to x1.8).
 
-What the tables say. Above the table, the direct classical law loses 12 of 40
-edge targets and stalls about 12 mm short, committed to a bending plane from
-which the target is not reachable within the limits; the direct learned law
-loses 3. The plan takes both to 40 of 40 and keeps that advantage under payload
-and drift, at a cost of about 0.3 s on interior targets. The curled-back region
-below the base, where the horizontal-frame builds had found the direct laws
-stalling more than 100 mm short, is behind the table now and out of the
-evaluation. One ensemble covers the whole flexibility range: a first attempt at
+What the tables say. Over the full reach, the direct classical law loses 18 of
+40 edge targets and stalls about 25 mm short, committed to a bending plane from
+which the target is not reachable within the limits, most often on targets
+curled back below the base; the direct learned law loses 5. The plan takes both
+to 40 of 40 and keeps that advantage under payload and drift, where it lifts the
+classical law from 20 of 40 to 37 or 38, at a cost of about 0.3 s on interior
+targets. One ensemble covers the whole flexibility range: a first attempt at
 the original size fell behind the classical law under payload; doubling the data
 and enlarging the network (93,600 samples, hidden layers of 64 and 48) brought
 it back, ahead of the classical law under payload and on edge targets, level
