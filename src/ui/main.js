@@ -113,6 +113,7 @@
   let trial = null;
   let trialCount = 0;
   let demo = null;
+  let demoSpin = false; // slow orbit during isometric demo segments
   let hadClick = false;
   let planeDrag = false;
   let showTendons = false;
@@ -483,15 +484,15 @@
   });
 
   // ---- scripted demo ----
+  // Demo targets, chosen far apart and verified to settle for both
+  // controllers under the condition each beat runs (test/sanity + headless
+  // trials). hook: curled under the base, the basin trap; sweep: the opposite
+  // side of the workspace; lateral: far out sideways; top: high on the axis.
   const TQ = {
-    a: [1.15, -0.25, 0.55, 0.4],
-    b: [0.45, 0.5, -0.7, 0.35],
-    c: [1.6, 0.15, 0.2, -0.5],
-    d: [0.8, -0.5, 0.9, 0.6],
-    // both segments curled the same way at the curvature limit: the tip ends
-    // below the base, at the far edge of the workspace; from the rest pose the
-    // direct classical law commits to the wrong bending plane and stalls there
-    edge: [2.2 * Math.cos(0.2), 2.2 * Math.sin(0.2), 2.6 * Math.cos(0.2), 2.6 * Math.sin(0.2)],
+    hook: [2.2 * Math.cos(0.2), 2.2 * Math.sin(0.2), 2.6 * Math.cos(0.2), 2.6 * Math.sin(0.2)],
+    sweep: [1.3 * Math.cos(0.2 + Math.PI), 1.3 * Math.sin(0.2 + Math.PI), 0.9 * Math.cos(0.2 + Math.PI), 0.9 * Math.sin(0.2 + Math.PI)],
+    lateral: [1.8 * Math.cos(1.77), 1.8 * Math.sin(1.77), 1.4 * Math.cos(1.77), 1.4 * Math.sin(1.77)],
+    top: [0.5 * Math.cos(2.5), 0.5 * Math.sin(2.5), 0.5 * Math.cos(2.5 - Math.PI), 0.5 * Math.sin(2.5 - Math.PI)],
   };
   const T3 = (q) => pcc.tip3(q);
   // just above the straight arm's reach (tip at z = 1.8), visible in both views
@@ -507,40 +508,43 @@
     let at = 0;
     const add = (dt, fn, note) => { at += dt; s.push({ at, fn, note }); };
     add(0, () => {
-      $('tgl-payload').checked = false; $('tgl-drift').checked = false; $('tgl-plan').checked = false;
-      payloadTarget = 0; driftOn = false; usePlan = false;
+      $('tgl-payload').checked = false; $('tgl-drift').checked = false; $('tgl-plan').checked = false; $('tgl-tendons').checked = false;
+      payloadTarget = 0; driftOn = false; usePlan = false; showTendons = false;
       if (Math.abs(pcc.flex() - 1) > 1e-9) { $('flex').value = '1'; applyFlex(1); }
       visible.classical = true; visible.learned = true;
       for (const g of document.querySelectorAll('.readouts .grp[data-robot]')) g.classList.remove('off');
       setPreset('iso');
+      demoSpin = true;
       resetAll();
-    }, 'Nominal physics, planner OFF: the direct feedback laws, from the rest pose.');
-    add(0.8, () => demoTarget(T3(TQ.edge)),
-      'A workspace-edge target, curled back below the base, direct feedback laws only. The classical law commits to the wrong bending plane and stalls short of it.');
-    add(6.6, () => { setPlan(true); }, 'Planner ON: inverse kinematics on the model first, then the same laws track the plan. Same target, same pose.');
-    add(0.4, () => demoTarget(T3(TQ.edge)));
-    add(6.4, () => demoTarget(T3(TQ.a)), 'Interior targets. The plan costs a little time here; the table keeps score.');
-    add(6.4, () => demoTarget(T3(TQ.b)));
-    add(6.6, () => { $('tgl-payload').checked = true; toggleChanged(); setPreset('side'); },
-      'Payload on, seen from the side sensor. An upright robot sags only when it leans; the ideal model does not know that either.');
-    add(1.2, () => demoTarget(T3(TQ.a)));
-    add(6.4, () => demoTarget(T3(TQ.d)));
-    add(6.6, () => { $('tgl-drift').checked = true; toggleChanged(); },
-      'Tendon drift on. A slow bias neither controller was told about.');
-    add(1.2, () => demoTarget(T3(TQ.c)));
-    add(6.4, () => demoTarget(T3(TQ.a)));
-    add(6.6, () => { setPreset('iso'); demoTarget(BEYOND); },
-      'A target above the reachable envelope. The plan stops at the closest reachable point; the ensemble flags what it was never shown.');
-    add(7.5, () => {
-      $('tgl-payload').checked = false; $('tgl-drift').checked = false;
-      toggleChanged();
-    }, 'Done. The table has the numbers; orbit, move the plane, click anywhere to keep playing.');
+    }, 'Same robot twice, two controllers: classical in orange, learned in blue. Direct feedback laws first, no planner.');
+    add(0.8, () => demoTarget(T3(TQ.hook)),
+      'A target curled under the base. The classical law commits to the wrong bending plane and stalls; the learned law goes around.');
+    add(6.4, () => { setPlan(true); }, 'Planner on: inverse kinematics on the ideal model, then the same feedback laws track the plan.');
+    add(0.4, () => demoTarget(T3(TQ.hook)));
+    add(6.4, () => demoTarget(T3(TQ.sweep)), 'Across the whole workspace in one plan.');
+    add(6.4, () => { $('tgl-payload').checked = true; toggleChanged(); setPreset('side'); demoSpin = false; },
+      'Payload on, seen from the side sensor. An upright robot sags only as it leans.');
+    add(1.0, () => demoTarget(T3(TQ.lateral)));
+    add(6.4, () => demoTarget(T3(TQ.top)));
+    add(6.4, () => { $('tgl-drift').checked = true; toggleChanged(); setPreset('iso'); demoSpin = true; },
+      'Tendon drift: a slow bias neither controller was told about.');
+    add(1.0, () => demoTarget(T3(TQ.lateral)));
+    add(6.4, () => {
+      $('tgl-payload').checked = false; $('tgl-drift').checked = false; toggleChanged();
+      $('tgl-tendons').checked = true; showTendons = true;
+    }, 'The tendons doing the work: white when slack, coloured when pulled.');
+    add(0.6, () => demoTarget(T3(TQ.sweep)));
+    add(6.4, () => { $('tgl-tendons').checked = false; showTendons = false; demoTarget(BEYOND); },
+      'A target above the reach. The plan stops at the closest reachable point; the ensemble flags what it was never shown.');
+    add(7.0, () => { demoSpin = false; },
+      'Done. Orbit, move the plane, click anywhere; the table has been keeping score.');
     add(0.1, () => stopDemo());
     return s;
   }
 
   function runDemo() {
     if (!demo) return;
+    if (demoSpin) orbit.az -= 0.035 * DT;
     // a step may call stopDemo(), which nulls demo; re-check each iteration
     while (demo && demo.idx < demo.steps.length && t - demo.tStart >= demo.steps[demo.idx].at) {
       const st = demo.steps[demo.idx++];
@@ -550,6 +554,7 @@
   }
   function stopDemo(msg) {
     demo = null;
+    demoSpin = false;
     $('btn-demo').textContent = 'Run scripted demo';
     if (typeof msg === 'string') $('demo-note').textContent = msg;
   }

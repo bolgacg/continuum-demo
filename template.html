@@ -19,6 +19,7 @@
     --feed-ink: #8a8f88;
     --warning: #fab219;
     --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --serif: Charter, "Bitstream Charter", Georgia, Cambria, "Times New Roman", serif;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { color-scheme: light; }
@@ -26,9 +27,14 @@
   .wrap { max-width: 984px; margin: 0 auto; padding: 40px 20px 56px; }
 
   .eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
-  h1 { font-size: 27px; font-weight: 650; letter-spacing: -0.015em; margin-bottom: 12px; }
-  .intro { max-width: 760px; color: var(--ink-2); }
+  h1 { font-size: 31px; font-weight: 650; letter-spacing: -0.02em; margin-bottom: 14px; }
+  .intro { max-width: 700px; color: var(--ink-2); font-family: var(--serif); font-size: 16.5px; line-height: 1.62; }
   .intro b { color: var(--ink); font-weight: 600; }
+  .prose { max-width: 700px; color: var(--ink-2); font-family: var(--serif); font-size: 15.5px; line-height: 1.66; }
+  .prose p { margin: 8px 0 18px; }
+  .prose b { color: var(--ink); }
+  .prose h3 { font: 650 16.5px/1.3 system-ui, -apple-system, sans-serif; color: var(--ink); margin: 30px 0 8px; display: flex; align-items: baseline; gap: 10px; }
+  .qn { font: 700 10.5px/1 var(--mono); color: var(--learned); letter-spacing: 0.08em; border: 1px solid currentColor; padding: 3px 6px 2px; border-radius: 5px; flex: none; }
   h2 { font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); margin: 36px 0 12px; display: flex; align-items: center; gap: 12px; }
   h2::after { content: ""; flex: 1; height: 1px; background: var(--hairline); }
 
@@ -106,18 +112,15 @@
   #empty-row td { color: var(--muted); font-family: system-ui, sans-serif; font-size: 13px; }
   .static-table td.hi { color: var(--ink); }
 
-  .notes { max-width: 780px; color: var(--ink-2); font-size: 14px; }
-  .notes li { margin: 7px 0 7px 18px; }
-  .change { max-width: 800px; margin: 18px 0 26px; }
-  .change h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
-  .change p { color: var(--ink-2); font-size: 14px; margin: 6px 0; }
-  .change p b { color: var(--ink); font-weight: 600; }
-  .change .kv { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
-  .v1-note { max-width: 800px; color: var(--ink-2); font-size: 14px; margin-bottom: 14px; }
+  .notes { max-width: 700px; color: var(--ink-2); font-family: var(--serif); font-size: 14.5px; line-height: 1.62; }
+  .notes li { list-style: none; position: relative; margin: 9px 0; padding-left: 18px; }
+  .notes li::before { content: "▪"; position: absolute; left: 0; top: 1px; color: var(--muted); font-size: 10px; }
+  .v1-note { max-width: 700px; color: var(--ink-2); font-family: var(--serif); font-size: 14.5px; margin-bottom: 14px; }
   .v1-frame { width: 100%; height: 1720px; border: 1px solid var(--border); border-radius: 10px; background: var(--page); }
   footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--hairline); color: var(--muted); font-size: 12.5px; display: flex; gap: 16px; flex-wrap: wrap; }
   @media (max-width: 860px) {
-    .feeds, .stats { grid-template-columns: 1fr; }
+    .feeds { gap: 10px; }
+    .stats { grid-template-columns: 1fr; }
     .tgroup { padding: 0 12px; }
     .tgroup.last { margin-left: 0; }
     .legend { position: static; margin-bottom: 8px; }
@@ -133,22 +136,19 @@
     <div class="eyebrow">simulation study · single file · no libraries · version 3</div>
     <h1>Continuum robot visual servoing, two ways</h1>
     <p class="intro">
-      A two-segment tendon-driven continuum robot chases 3D targets using nothing but
-      four markers seen by two fixed cameras. The orange controller uses the textbook constant
-      curvature model. The blue one learned from the simulator's less polite physics
-      (backlash, sag, drift) and <b>reports its own uncertainty</b>. Built as a study of the
-      problems in the SDU Robotics job ad on sensing and AI-based control of continuum
-      surgical robots. It is a toy, and the gap between the idealized model and the
-      simulated truth is the point.
+      A two-segment tendon-driven continuum robot chases 3D targets using nothing but four
+      markers seen by two fixed cameras. The <b>orange</b> controller trusts the textbook
+      constant-curvature model; the <b>blue</b> one learned from the simulator's less polite
+      physics and <b>reports its own uncertainty</b>. Built as a study of the problems in the
+      SDU Robotics job ad on sensing and AI-based control of continuum surgical robots. It is
+      a toy, and the gap between the idealized model and the simulated truth is the point.
     </p>
-    <p class="intro" style="margin-top:10px">
-      <b>Version 3.</b> The simulation is 3D. Version 1 showed it through one 2D camera, and
-      everything that looked wrong followed from that: a clicked point was really a ray, so the
-      controllers reached for any point on a line; the markers seemed to change spacing when
-      only the perspective did; and a target reached from one pose and not from another looked
-      more inconsistent than it was. This version fixes the sensing, the task and the views,
-      and says what each change cost. <a href="#changes">What changed, and why</a>.
-      Version 1 is kept unchanged at the <a href="#v1">bottom of the page</a>.
+    <p class="intro">
+      <b>Version 3.</b> The simulation is 3D; version 1 showed it through one 2D camera and
+      gave the controllers a pixel to chase, and everything that looked wrong followed from
+      that. This version fixes the sensing, the task and the views.
+      <a href="#changes">The three questions it drew, answered</a>. Version 1 is kept
+      unchanged at the <a href="#v1">bottom of the page</a>.
     </p>
   </header>
 
@@ -199,7 +199,7 @@
     </span>
     <span class="tgroup">
       <label class="switch"><input type="checkbox" id="tgl-tendons"><span class="knob"></span>Tendons</label>
-      <label class="switch"><input type="checkbox" id="tgl-plan" checked><span class="knob"></span>Plan first</label>
+      <label class="switch" title="On: each new target is first solved by inverse kinematics on the ideal model and the controllers track that path. Off: the feedback laws chase the target directly."><input type="checkbox" id="tgl-plan" checked><span class="knob"></span>Planner</label>
       <label class="switch"><input type="checkbox" id="tgl-payload"><span class="knob"></span>Payload</label>
       <label class="switch"><input type="checkbox" id="tgl-drift"><span class="knob"></span>Tendon drift</label>
     </span>
@@ -248,44 +248,23 @@
     </div>
   </div>
 
-  <h2 id="changes">What changed in version 3, and why</h2>
+  <h2 id="changes">The three questions, answered</h2>
+  <div class="prose">
+    <h3><span class="qn">Q1</span>How was the irregular boundary determined?</h3>
+    <p>It was the convex hull of the 900 targets the ensemble trained on, projected into the image: irregular because it was the perspective silhouette of a 3D workspace, and not actually the reachable set. Version 3 computes the reachable set as itself: 200,000 sampled tip positions at the curvature limits, an outer envelope around them (the grey cage), the ensemble's training population beside it (the blue cage), and on the target plane the exact cross-section, holes included. Near the base that section is a ring: a robot of fixed length cannot bring its tip next to its own base. Whether one specific target is reachable is decided by inverse kinematics, and the trial table says <b>beyond reach</b> when it is not.</p>
 
-  <div class="change">
-    <h3>1. The simulation is 3D. Version 1 showed it through one 2D camera</h3>
-    <p>The robot bends in three dimensions: two segments of constant arc length (1.0 and 0.8 in normalized units), one constant-curvature arc per segment with a curvature vector that picks the bending plane, three tendons per segment, four markers at fixed arc positions, no joints, no cross-section. Version 1 rendered that through a single perspective camera placed off to the side and gave the controllers a pixel to chase. Three things followed.</p>
-    <p><b>The point was a ray.</b> With one camera an image point fixes two of the tip's three coordinates. Depth along the viewing ray was never observed and never asked for, so the loop accepted any point on that line as success. In visual-servoing terms this is the known limitation of a single point feature; for a robot that has to reach a point it is the wrong task.</p>
-    <p><b>The markers seemed to move along the robot.</b> A segment bending toward the camera projected long, one bending away projected short, and the tube was drawn wider when nearer, as any camera would. In 3D the chord between neighbouring markers varies by under 4%; in that image it ran from about 1 px to about 60 px. A decorative taper on the drawn tube made it worse. Nothing in the geometry ever changed.</p>
-    <p><b>Reaching looked more inconsistent than it was.</b> A pixel is reachable from several bending planes, and a local law picks one greedily. From one pose the loop found a plane that reaches the target; from another it committed to the wrong plane, hit the curvature limit and stalled short. Seen in 2D that reads as random; in 3D it is a controller with a hidden degree of freedom.</p>
-  </div>
+    <h3><span class="qn">Q2</span>Is the distance between the joints variable?</h3>
+    <p>There are no joints and nothing varies. Two segments of constant arc length (1.0 and 0.8 normalized), one constant-curvature arc per segment, three tendons each, four markers at fixed arc positions. In 3D the chord between neighbouring markers changes by under 4%; the old oblique camera stretched that to a factor of sixty on screen, and a decorative taper on the drawn tube suggested geometry that was never modelled. The orbiting inspector, the constant-radius tube and the Tendons view now show the fixed structure directly.</p>
 
-  <div class="change">
-    <h3>2. What version 3 changes for that</h3>
-    <p><b>Sensing and task.</b> Two fixed, calibrated cameras (CAM 01 side, CAM 02 top) see the four markers; each marker is triangulated and both controllers get the same 3D estimate and a 3D target with a 3D error. The cameras add no noise, so the triangulation is exact; the page does not pretend otherwise.</p>
-    <p><b>Placing a target.</b> A click in the inspector still gives a ray. The height plane, set with the vertical slider on the side sensor view (thumb and plane line sit at the same height) or by dragging the plane itself, turns the ray back into a point; move the plane afterwards and the target keeps its x and y, only its height follows. The outline drawn at the plane's height is the reachable set's cross-section there, from a sampled occupancy grid: near the base it is a ring, because a robot of fixed length cannot bring its tip next to its own base. Click inside it and the target is reachable; outside it the trial is marked beyond reach, the plan stops at the closest reachable point, and the ensemble flags a target it was never shown.</p>
-    <p><b>Flexibility.</b> The crescent is the mechanism, not the controller: what the tip can reach is set by the segment lengths and the curvature limits, and no amount of training moves it. The Flexibility slider scales the curvature limits (×1.0 is the original 126° and 119° per segment; ×1.8 is about 227° and 214°), and the planner, the envelope and the outline follow. The ensemble was trained across the whole range, so its warning refers to targets outside what the most flexible setting was ever asked to reach.</p>
-    <p><b>Orientation.</b> The robot stands on its base with the axis up and gravity along the axis; nothing blocks the space under the base, and the height plane covers the whole reach. An upright straight robot does not sag; the further a segment leans, the larger the component of gravity across it, and the simulator's droop grows with that lean and with the payload. Version 1's horizontal cantilever sagged everywhere; this is the more honest picture for a bench-mounted robot, and the one the ensemble is now trained on.</p>
-    <p><b>Views.</b> The inspector orbits the workspace (drag), with side, top and isometric presets; the side and top presets are the sensors' own poses, so what the controllers see can be compared with any other angle. The tube is drawn with one constant radius. Segment ends are filled markers, midpoints hollow rings: two segments, one midpoint each.</p>
-  </div>
+    <h3><span class="qn">Q3</span>How was the inverse kinematics solved?</h3>
+    <p>In version 1 it was not: both controllers were local feedback laws chasing a pixel, and with one camera a pixel is a line in space, so the loop could commit to the wrong bending plane and stall at the curvature limit. Version 3 gives both controllers a real 3D target (two calibrated cameras, triangulated markers) and puts a planner above them: numerical inverse kinematics on the ideal model, a coarse search over 12,000 sampled configurations refined by damped Gauss-Newton inside the limits, then a configuration path that the feedback laws track. The <b>Planner</b> switch turns it off, and the table below is the measured difference: direct, the classical law loses 18 of 40 workspace-edge targets and stalls about 25 mm short, the learned law loses 5; planned, both reach 40 of 40. A null-space term was tried first and barely moved the numbers; the failure is a basin, not redundancy resolution.</p>
 
-  <div class="change">
-    <h3>3. The boundary</h3>
-    <p>Version 1's dashed outline was the convex hull of the 900 targets the ensemble had been trained on, projected into the image, described as "close to the reachable set". It looked irregular because it was the perspective silhouette of a three-dimensional workspace, sampled finitely, and it was not the reachable set: the model reaches about 35 px further where the robot curls back on itself. Version 3 draws the reachable set itself, in 3D: 200,000 sampled configurations at the curvature limits, their tip positions binned by direction around the cloud's centroid, the largest radius per bin kept, holes filled, smoothed, then scaled up by the smallest factor that keeps 99.9% of the samples inside. That is the translucent envelope in both views. It is an outer envelope, generous where the true set is concave; whether a specific target is reachable is decided by the planner's inverse kinematics, and the trial table says <span class="kv">beyond reach</span> when it is not.</p>
-  </div>
-
-  <div class="change">
-    <h3>4. Inverse kinematics</h3>
-    <p><b>Version 1 solved none.</b> Both controllers were local laws: the classical one a damped pseudo-inverse of the ideal model's pixel Jacobian at its believed configuration, integrated into a curvature command; the learned one a regressed gain matrix of the same shape. Nothing chose a configuration deliberately. <b>Version 3</b> keeps local feedback laws on the 3D error (the classical one now differentiates the ideal model for a 3×4 Jacobian; the ensemble was retrained on triangulated markers and a 3D error) and adds a planning layer above both: when a target is set, the inverse kinematics is solved numerically on the ideal model (a coarse global search over 12,000 sampled configurations for those whose tip lands near the target, the one nearest the current configuration refined by damped Gauss-Newton inside the curvature limits; if nothing reaches the target, the closest reachable point), a straight configuration path runs to it at 60% of the actuator rate limit, and each controller tracks that reference with feed-forward plus its own feedback. When the path ends, the loop is the direct law again. The plan is only as good as the ideal model; under payload the feedback term carries the difference.</p>
-    <p><b>Is the plan needed with a 3D target?</b> Measured, not assumed: the "Plan first" switch above turns it off, and the table below reports both, for targets anywhere in the reach, the curled-back region below the base included. On interior targets the direct laws settle 36 of 40 and the plan takes both to 40 of 40 at a cost of about 0.3 s. On edge targets the direct classical law loses 18 of 40 and stalls about 25 mm short (it commits to a bending plane from which the target is not reachable within the curvature limits, most often on targets curled back below the base); the direct learned law loses 5; the plan takes both to 40 of 40 and keeps the advantage under payload and drift, where it lifts the classical law from 20 of 40 to 37 or 38. A null-space term (curvature minimization, or a pull toward a good configuration) was tried before the planner and moved the numbers only slightly, because the failure is a basin, not the redundancy resolution.</p>
-    <p><b>What training across the flexibility range cost.</b> One ensemble now covers every mechanism the slider can set. A first attempt at the original size fell behind the classical law under payload; doubling the data and enlarging the network (93,600 samples, hidden layers of 64 and 48) brought it back: ahead of the classical law under payload and on edge targets, level under payload with drift, slightly behind under drift alone. The table shows all of it.</p>
-  </div>
-
-  <div class="change">
-    <h3>Also fixed</h3>
-    <p>The last step of version 1's scripted demo threw an exception that stopped the page's animation loop, so after "click anywhere to keep playing" nothing responded. Version 1 below still has that bug; reload its frame if you ran its demo.</p>
+    <h3>Also changed</h3>
+    <p>The robot stands upright with gravity along its axis, so it sags only as it leans and the payload scales that. The Flexibility slider bends the mechanism further and the planner, cages and outline follow; the ensemble is retrained across the whole range (93,600 samples) and flags any target outside what it was ever trained on. Millimetres are a display convention (robot = 180 mm). Version 1's scripted demo froze the page at its last step; fixed here, kept there.</p>
   </div>
 
   <div class="panel">
-    <div class="panel-title">Direct law against plan-then-track, 40 trials per cell</div>
+    <div class="panel-title">Planner off against planner on, 40 trials per cell</div>
     <div class="panel-sub">Headless, same protocol as the trial table (<span class="kv">node train/eval.js</span>). Edge targets: tips at 95 to 100% of the curvature limit. Interior targets: up to 85%. Settled out of 40, median settle time, mean steady-state error.</div>
     <div class="table-scroll">
     <table class="static-table" id="eval-table">

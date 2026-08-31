@@ -57,11 +57,18 @@
     ctx.stroke();
   }
 
+  // Static layers (cages) are expensive at full quality, so: while the camera
+  // is moving (orbit drag, demo spin) each frame gets cheap coarse layers,
+  // drawn fresh and not cached; the first frame after the camera rests renders
+  // the fine version once and caches it.
   const layerCache = new Map();
+  const lastSig = new Map();
   function staticLayers(key, cam, W, H, volume, trainVolume) {
     const sig = cam.pos.map((v) => v.toFixed(5)).join(',') + '|' + cam.up.map((v) => v.toFixed(5)).join(',') + '|' + W + 'x' + H + '|' + !!(volume && volume.show) + '|' + !!(trainVolume && trainVolume.mesh);
     let entry = layerCache.get(key);
     if (entry && entry.sig === sig) return entry;
+    const moving = lastSig.get(key) !== sig;
+    lastSig.set(key, sig);
     const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
     const make = () => {
       const c = document.createElement('canvas');
@@ -71,26 +78,27 @@
       return { c, g };
     };
     const far = make(), near = make();
-    // training-limit cage: the population the ensemble was trained on, as a
-    // sparse wireframe in the learned controller's colour, far half only
-    // behind the scene and near half in front, no fill
     if (trainVolume && trainVolume.mesh) {
-      const tq = domeQuads(cam, trainVolume.mesh, 4);
+      const tq = domeQuads(cam, trainVolume.mesh, moving ? 6 : 4);
       fillQuads(far.g, tq.far, 'rgba(0,0,0,0)', 'rgba(57,135,229,0.16)');
       fillQuads(near.g, tq.near, 'rgba(0,0,0,0)', 'rgba(57,135,229,0.11)');
     }
     if (volume && volume.show && volume.mesh) {
-      // smooth silhouette from the full-resolution mesh, wireframe from a
-      // coarser one; both rasterized once per camera pose
-      const fine = domeQuads(cam, volume.mesh, 1);
       const coarse = domeQuads(cam, volume.mesh, 3);
-      fillQuads(far.g, fine.far, 'rgba(138,143,136,0.055)', 'rgba(0,0,0,0)');
-      fillQuads(far.g, coarse.far, 'rgba(0,0,0,0)', 'rgba(138,143,136,0.10)');
-      fillQuads(near.g, fine.near, 'rgba(138,143,136,0.055)', 'rgba(0,0,0,0)');
-      fillQuads(near.g, coarse.near, 'rgba(0,0,0,0)', 'rgba(138,143,136,0.07)');
+      if (moving) {
+        // coarse silhouette + wireframe only
+        fillQuads(far.g, coarse.far, 'rgba(138,143,136,0.055)', 'rgba(138,143,136,0.10)');
+        fillQuads(near.g, coarse.near, 'rgba(138,143,136,0.055)', 'rgba(138,143,136,0.07)');
+      } else {
+        const fine = domeQuads(cam, volume.mesh, 1);
+        fillQuads(far.g, fine.far, 'rgba(138,143,136,0.055)', 'rgba(0,0,0,0)');
+        fillQuads(far.g, coarse.far, 'rgba(0,0,0,0)', 'rgba(138,143,136,0.10)');
+        fillQuads(near.g, fine.near, 'rgba(138,143,136,0.055)', 'rgba(0,0,0,0)');
+        fillQuads(near.g, coarse.near, 'rgba(0,0,0,0)', 'rgba(138,143,136,0.07)');
+      }
     }
     entry = { sig, far: far.c, near: near.c };
-    layerCache.set(key, entry);
+    if (!moving) layerCache.set(key, entry); // cache only the fine, at-rest render
     return entry;
   }
 
@@ -414,5 +422,5 @@
     return cam.pos[2] + t * d[2];
   }
 
-  CR.scene = { draw, planeScreenY, planeYFromPixel, invalidateLayers: () => layerCache.clear(), R_TUBE, TENDON_DRAW_SCALE };
+  CR.scene = { draw, planeScreenY, planeYFromPixel, invalidateLayers: () => { layerCache.clear(); lastSig.clear(); }, R_TUBE, TENDON_DRAW_SCALE };
 })(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));

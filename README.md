@@ -19,7 +19,7 @@ Live at <https://bolgacg.github.io/continuum-demo/>, nothing to install. Or open
 
 Drag in the inspector to orbit, click to place a target on the height plane, move
 the plane in the side sensor view (or with the slider), flip Payload / Tendon
-drift / Plan first, or press "Run scripted demo" (`index.html#demo` starts it
+drift / Planner, or press "Run scripted demo" (`index.html#demo` starts it
 automatically). Version 1, as published on 17 August, is kept byte for byte as
 `v1.html` and embedded at the bottom of the page.
 
@@ -86,7 +86,7 @@ view that sits 1:1 with the height plane. Two further changes and a fix:
    reachable point if the target is out of reach), a configuration path at 60% of
    the rate limit, and each controller tracking that reference with feed-forward
    plus its own feedback. Whether the plan is needed with the 3D task is measured
-   below, not assumed; the page has a "Plan first" switch.
+   below, not assumed; the page has a Planner switch (on: solve inverse kinematics on the model and track that path; off: the feedback laws chase the target directly).
 6. **Bug.** The last step of version 1's scripted demo threw an exception that
    stopped the animation loop. Fixed; `v1.html` keeps the bug because it keeps
    everything.
