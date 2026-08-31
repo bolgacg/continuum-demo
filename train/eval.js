@@ -4,7 +4,8 @@
 // Display convention: 1 length unit = 100 mm.
 //
 // Two target sets: "interior" (tips of random configurations at up to 85% of
-// the curvature limit) and "edge" (tips at 95 to 100% of the limit). Each
+// the curvature limit) and "edge" (tips at 95 to 100% of the limit), both
+// restricted to above the table the upright robot stands on. Each
 // controller runs as the direct law and under the plan-then-track layer.
 // Run: node train/eval.js   Prints markdown tables for the README and page.
 'use strict';
@@ -20,7 +21,7 @@ const SETTLE_U = 0.05, SETTLE_HOLD = 0.8;
 const MM = 100;
 
 const weights = JSON.parse(fs.readFileSync(path.join(__dirname, 'weights.json'), 'utf8'));
-const trainIK = CR.planner.createPlanner({ limitScale: 0.9, seed: 13 });
+const trainIK = CR.planner.createPlanner({ limitScale: 0.9 * CR.pcc.FLEX_RANGE[1], seed: 13 }); // population the ensemble was trained on
 const targetTest = (p) => trainIK.solveIK(p, [0, 0, 0, 0]).reachable;
 const camSide = CR.camera.sideCamera(W, H), camTop = CR.camera.topCamera(W, H);
 const planner = CR.planner.createPlanner();
@@ -58,7 +59,14 @@ function runTrial(kind, mode, cond, targetSet, seed) {
 
   const ctrl = makeCtrl(kind, mode);
   ctrl.reset(q0);
-  const target = CR.pcc.tip3(targetSet === 'edge' ? randomQ(rng, 0.95, 1.0) : randomQ(rng, 0, 0.85));
+  // targets above the table the robot stands on (z >= 0.05); the curled-back
+  // region below the base is physically blocked and not evaluated
+  let target = null;
+  for (let tries = 0; tries < 200 && !target; tries++) {
+    const p = CR.pcc.tip3(targetSet === 'edge' ? randomQ(rng, 0.95, 1.0) : randomQ(rng, 0, 0.85));
+    if (p[2] >= 0.05) target = p;
+  }
+  if (!target) return null;
 
   let bandEnter = null, settle = null, oodSteps = 0;
   const tail = [];

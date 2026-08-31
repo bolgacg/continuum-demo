@@ -1,7 +1,7 @@
 // Trains the ensemble (version 3, 3D task). Run: node train/train.js
 //
-// Data: episodes on the truth sim with randomized payload, drift, initial
-// pose and 3D targets. The label at each visited state is the privileged
+// Data: episodes on the truth sim with randomized flexibility (curvature
+// limits), payload, drift, initial pose and 3D targets. The label at each visited state is the privileged
 // expert's feedback gain matrix G = -gain * dampedPinv(J_truth), 4x3: the
 // truth sim's Jacobian only exists at training time. The applied action is
 // the expert's command plus exploration noise, so visited states spread
@@ -20,13 +20,13 @@ const path = require('path');
 const CR = require('./load.js');
 
 const DT = 1 / 60;
-const N_EPISODES = 300;
+const N_EPISODES = 600;          // doubled with the flexibility range: one network covers all mechanisms
 const TARGETS_PER_EP = 3;
 const STEPS_PER_TARGET = 156;   // 2.6 s
 const RECORD_EVERY = 3;
 const N_MEMBERS = 5;
-const ARCH = [CR.features.DIM, 48, 32, 12]; // output: 4x3 gain matrix, row-major
-const EPOCHS = 30;
+const ARCH = [CR.features.DIM, 64, 48, 12]; // output: 4x3 gain matrix, row-major
+const EPOCHS = 40;
 const BATCH = 256;
 const LR0 = 2e-3;
 const HOLDOUT_FRAC = 0.1;
@@ -46,7 +46,11 @@ function randomQ(scale) {
 // ---------- dataset ----------
 console.log('generating data...');
 const X = [], Y = [];
+const [FLEX_MIN, FLEX_MAX] = CR.pcc.FLEX_RANGE;
 for (let ep = 0; ep < N_EPISODES; ep++) {
+  // the mechanism's flexibility is a slider on the page; train across its
+  // whole range so the ensemble has seen the poses every setting can reach
+  CR.pcc.setFlex(FLEX_MIN + (FLEX_MAX - FLEX_MIN) * rng());
   const sim = CR.truth.createTruth(1000 + ep);
   sim.payload = rng() < 0.4 ? 0 : rng();
   sim.driftOn = rng() < 0.5;
@@ -79,6 +83,7 @@ for (let ep = 0; ep < N_EPISODES; ep++) {
     }
   }
 }
+CR.pcc.setFlex(1.0);
 console.log('samples: ' + X.length);
 
 // ---------- input stats + envelope ----------
@@ -208,7 +213,8 @@ const blob = {
     members: N_MEMBERS,
     epochs: EPOCHS,
     holdoutMse: Math.round(holdMse * 1e6) / 1e6,
-    note: 'ensemble regresses G = -gain*pinv(J_truth) (4x3); command is v = G e; inputs are triangulated markers + 3D target error',
+    note: 'ensemble regresses G = -gain*pinv(J_truth) (4x3); command is v = G e; inputs are triangulated markers + 3D target error; upright robot, gravity along the axis; episodes span flexibility ' + FLEX_MIN + '..' + FLEX_MAX,
+    flexRange: [FLEX_MIN, FLEX_MAX],
   },
   inputMean: mean.map(round),
   inputStd: std.map(round),

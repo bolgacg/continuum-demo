@@ -53,9 +53,9 @@ const camSide = camera.sideCamera(W, H), camTop = camera.topCamera(W, H);
 {
   const c = camera.CENTER;
   const p0 = camSide.project(c), pz = camSide.project(v3.add(c, [0, 0, 0.3])), py = camSide.project(v3.add(c, [0, 0.3, 0]));
-  check('side sensor: +z is image-left, +y is image-up', pz[0] < p0[0] && py[1] < p0[1]);
-  const t0 = camTop.project(c), tz = camTop.project(v3.add(c, [0, 0, 0.3])), tx = camTop.project(v3.add(c, [0.3, 0, 0]));
-  check('top sensor: +z is image-left, +x is image-down', tz[0] < t0[0] && tx[1] > t0[1]);
+  check('side sensor: axis (+z) is image-up, +y is image-right', pz[1] < p0[1] && py[0] > p0[0]);
+  const t0 = camTop.project(c), ty = camTop.project(v3.add(c, [0, 0.3, 0])), tx = camTop.project(v3.add(c, [0.3, 0, 0]));
+  check('top sensor: +y is image-right, +x is image-down', ty[0] > t0[0] && tx[1] > t0[1]);
   const rng = CR.makeRng(9);
   let worst = 0;
   for (let n = 0; n < 500; n++) {
@@ -67,21 +67,27 @@ const camSide = camera.sideCamera(W, H), camTop = camera.topCamera(W, H);
   check('two-view triangulation exact (<1e-9)', worst < 1e-9, worst.toExponential(2));
   const cam = camera.orbitCamera(0.95, 0.52, W, H);
   const p = [0.3, -0.2, 1.1], px = cam.project(p);
-  const hit = camera.rayPlaneY(cam.pos, cam.rayDir(px[0], px[1]), p[1]);
+  const hit = camera.rayPlaneZ(cam.pos, cam.rayDir(px[0], px[1]), p[2]);
   check('click ray x height plane recovers the point', hit && v3.norm(v3.sub(hit, p)) < 1e-9);
 }
 
 // --- truth sim statics ---
 {
+  // upright robot: no sag while straight, more sag the further it leans
+  const straight = truth.applyStatic([0, 0, 0, 0], 1);
+  check('upright straight robot does not sag under payload', straight.every((v) => Math.abs(v) < 1e-9));
+  // static map alone (no backlash): a leaning segment sags further, payload more so
+  const lean = [1.0, 0.5, -0.5, 0.3];
+  const k1cmd = Math.hypot(lean[0], lean[1]);
+  const s0 = truth.applyStatic(lean, 0), s1 = truth.applyStatic(lean, 1);
+  const k1s0 = Math.hypot(s0[0], s0[1]), k1s1 = Math.hypot(s1[0], s1[1]);
+  check('leaning segment sags further under its own weight', k1s0 > k1cmd, k1cmd.toFixed(3) + ' -> ' + k1s0.toFixed(3));
+  check('payload increases the sag of a leaning segment', k1s1 > k1s0 + 0.1, k1s1.toFixed(3));
+  // through the dynamics, backlash costs a little curvature; still stable
   const sim = truth.createTruth(42);
-  sim.setCommand([1.0, 0.5, -0.5, 0.3]);
+  sim.setCommand(lean);
   for (let i = 0; i < 240; i++) sim.step(1 / 60);
-  const q = sim.qEff();
-  check('self-droop biases segment 1 down', q[1] < 0.5, q[1].toFixed(3));
-  const before = q.slice();
-  sim.payload = 1;
-  sim.step(1 / 60);
-  check('payload increases droop', sim.qEff()[1] < before[1] - 0.2);
+  check('dynamic steady state is finite and near the static map', sim.qEff().every((v) => Number.isFinite(v)) && Math.abs(Math.hypot(sim.qEff()[0], sim.qEff()[1]) - k1s0) < 0.1);
   const sim2 = truth.createTruth(1);
   sim2.setCommand([1.0, 0, 0, 0]);
   for (let i = 0; i < 240; i++) sim2.step(1 / 60);
@@ -95,7 +101,7 @@ const camSide = camera.sideCamera(W, H), camTop = camera.topCamera(W, H);
 {
   const weights = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'train', 'weights.json'), 'utf8'));
   const wsAll = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'train', 'workspace.json'), 'utf8'));
-  const trainIK = planner.createPlanner({ limitScale: 0.9, seed: 13 });
+  const trainIK = planner.createPlanner({ limitScale: 0.9 * pcc.FLEX_RANGE[1], seed: 13 });
   const targetTest = (p) => trainIK.solveIK(p, [0, 0, 0, 0]).reachable;
   const pl = planner.createPlanner();
   const Q0 = [0.5, 0.1, -0.35, 0.3];
@@ -128,18 +134,22 @@ const camSide = camera.sideCamera(W, H), camTop = camera.topCamera(W, H);
   r = run('learned', 'direct', tIn, 6, 1);
   check('learned direct under payload (<5 mm)', r.err < 0.05, (r.err * 100).toFixed(2) + ' mm');
 
-  const edgeQ = [2.2 * Math.cos(0.2), 2.2 * Math.sin(0.2), 2.6 * Math.cos(0.2), 2.6 * Math.sin(0.2)];
+  const edgeQ = [2.2 * 0.75 * Math.cos(4.2), 2.2 * 0.75 * Math.sin(4.2), 2.6 * 0.5 * Math.cos(4.2), 2.6 * 0.5 * Math.sin(4.2)];
   const tEdge = pcc.tip3(edgeQ);
+  check('demo edge target sits above the table', tEdge[2] > 0.05, tEdge.map((v) => v.toFixed(2)).join(','));
   const ik = pl.solveIK(tEdge, Q0);
   check('IK reaches the edge target (<1 mm residual)', ik.residual < 0.01, (ik.residual * 100).toFixed(3) + ' mm');
   const c1 = run('classical', 'direct', tEdge, 8).err, c2 = run('classical', 'planned', tEdge, 8).err;
   const l1 = run('learned', 'direct', tEdge, 8).err, l2 = run('learned', 'planned', tEdge, 8).err;
-  check('direct classical stalls short of the edge target from rest (>20 mm)', c1 > 0.2, (c1 * 100).toFixed(1) + ' mm');
-  check('planned classical reaches it (<5 mm)', c2 < 0.05, (c2 * 100).toFixed(1) + ' mm');
-  // the learned law is not asserted to stall here: measured, it reaches this
-  // particular target without a plan (train/eval.js has the population view)
-  console.log('  info direct learned on the same edge target from rest: ' + (l1 * 100).toFixed(1) + ' mm');
-  check('planned learned reaches it (<5 mm)', l2 < 0.05, (l2 * 100).toFixed(1) + ' mm');
+  // direct-law results are reported, not asserted: train/eval.js has the population view
+  console.log('  info edge target from rest, direct: classical ' + (c1 * 100).toFixed(1) + ' mm, learned ' + (l1 * 100).toFixed(1) + ' mm');
+  check('planned classical reaches the edge target (<5 mm)', c2 < 0.05, (c2 * 100).toFixed(1) + ' mm');
+  check('planned learned reaches the edge target (<5 mm)', l2 < 0.05, (l2 * 100).toFixed(1) + ' mm');
+  // the curled-back hook below the base is the basin trap the old horizontal frame exposed
+  const hookQ = [2.2 * Math.cos(0.2), 2.2 * Math.sin(0.2), 2.6 * Math.cos(0.2), 2.6 * Math.sin(0.2)];
+  const tHook = pcc.tip3(hookQ);
+  const h1 = run('classical', 'direct', tHook, 8).err, h2 = run('classical', 'planned', tHook, 8).err;
+  check('below-base hook target: direct classical stalls (>20 mm), planned reaches (<5 mm)', h1 > 0.2 && h2 < 0.05, (h1 * 100).toFixed(1) + ' / ' + (h2 * 100).toFixed(1) + ' mm');
 
   // tracking form with a fixed reference and no feed-forward is the direct law
   const a = ibvs.createClassical(), b = ibvs.createClassical();
@@ -163,7 +173,7 @@ const camSide = camera.sideCamera(W, H), camTop = camera.topCamera(W, H);
   const mesh = workspace.envelopeMesh(vol);
   check('envelope mesh shape', mesh.length === vol.nt + 2 && mesh[1].length === vol.np);
   check('a point far above the envelope is outside', !workspace.insideEnvelope(vol, [0.1, 1.9, 0.6]));
-  check('the demo\'s beyond-reach target is outside the envelope', !workspace.insideEnvelope(vol, [0.1, -0.1, 2.35]));
+  check('the demo\'s beyond-reach target is outside the envelope', !workspace.insideEnvelope(vol, [0.1, 0.0, 2.3]));
   // occupancy grid agrees with the planner's reachability on random points
   const grid = workspace.gridFromJSON(wsAll.grid);
   let agree = 0, nPts = 0, gridYes = 0, ikYes = 0;
@@ -174,17 +184,24 @@ const camSide = camera.sideCamera(W, H), camTop = camera.topCamera(W, H);
     nPts++; if (g === k) agree++; if (g) gridYes++; if (k) ikYes++;
   }
   check('reach grid agrees with IK reachability on >=93% of random points', agree / nPts >= 0.93, (100 * agree / nPts).toFixed(1) + '% (grid ' + gridYes + ', IK ' + ikYes + ' of ' + nPts + ')');
-  check('a slice of the grid has contour segments', workspace.gridSectionSegments(grid, -0.1).length > 50);
+  check('a slice of the grid has contour segments', workspace.gridSectionSegments(grid, 1.2).length > 50);
+  // flexibility: scaling the curvature limits enlarges the reachable set
+  const cellsAt = (f) => { pcc.setFlex(f); const g = workspace.reachableGrid({ samples: 60000 }); pcc.setFlex(1); let n = 0; for (const b of g.bits) for (let k = 0; k < 8; k++) n += (b >> k) & 1; return n; };
+  const n10 = cellsAt(1.0), n16 = cellsAt(1.6);
+  check('flexibility x1.6 reaches more cells than x1.0', n16 > n10 * 1.15, n10 + ' -> ' + n16);
+  pcc.setFlex(1.6); const plFlex = planner.createPlanner(); pcc.setFlex(1.0);
+  check('planner built at x1.6 carries x1.6 limits', Math.abs(plFlex.limits()[0] - 1.6 * pcc.KMAX_BASE[0]) < 1e-9);
+  check('planner built at x1.0 keeps x1.0 limits', Math.abs(pl.limits()[0] - pcc.KMAX_BASE[0]) < 1e-9);
   // the ensemble flags targets outside the population it was trained on
   const L = CR.learned.createLearned(weights, { targetTest });
   const simF = truth.createTruth(1); simF.reset(Q0);
   const mF = camera.senseMarkers(simF.markers3(), camSide, camTop);
   L.reset(Q0);
-  check('learned flags a target beyond reach', L.step(mF, [0.1, 1.9, 0.6], dt).ood);
+  check('learned flags a target beyond any reach', L.step(mF, [0.1, 0.0, 2.3], dt).ood);
   L.reset(Q0);
-  check('learned flags a target at the curvature limit (outside its 90% training population)', L.step(mF, tEdge, dt).ood);
-  check('90%-limit IK does not reach the full-limit edge target', !trainIK.solveIK(tEdge, [0, 0, 0, 0]).reachable);
-  check('90%-limit IK reaches an interior target', trainIK.solveIK(tIn, [0, 0, 0, 0]).reachable);
+  check('learned does not flag the demo edge target (inside the trained range)', !L.step(mF, tEdge, dt).ood);
+  check('training-population IK reaches the demo edge target', trainIK.solveIK(tEdge, [0, 0, 0, 0]).reachable);
+  check('training-population IK reaches an interior target', trainIK.solveIK(tIn, [0, 0, 0, 0]).reachable);
   L.reset(Q0);
   check('learned does not flag an interior target', !L.step(mF, tIn, dt).ood);
 }

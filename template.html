@@ -39,6 +39,16 @@
   .feed-title { font-weight: 600; font-size: 14.5px; }
   .feed-sub { color: var(--muted); font-size: 12.5px; }
   .feed-frame { position: relative; border-radius: 10px; overflow: hidden; background: var(--feed); border: 1px solid var(--border); }
+  .feed-row { display: flex; align-items: stretch; gap: 8px; }
+  .feed-row .feed-frame { flex: 1; min-width: 0; }
+  .vslider-wrap { position: relative; width: 22px; flex: none; }
+  .vslider-wrap input[type=range] { position: absolute; left: 0; top: -7px; height: calc(100% + 14px); width: 22px; margin: 0; writing-mode: vertical-lr; accent-color: var(--ink-2); }
+  .readouts .grp[data-robot] { cursor: pointer; user-select: none; }
+  .readouts .grp.off { opacity: 0.38; }
+  .readouts .grp.off .name::after { content: " (hidden)"; font-weight: 400; color: var(--muted); }
+  .flexctl { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; }
+  .flexctl input[type=range] { width: 110px; accent-color: var(--ink-2); }
+  .flexctl .val { font-family: var(--mono); font-size: 12px; color: var(--ink-2); min-width: 190px; }
   .feed-frame canvas { display: block; width: 100%; height: auto; cursor: crosshair; touch-action: none; }
   .feed-tools { display: flex; align-items: center; gap: 10px; padding: 8px 2px 0; font-size: 12.5px; color: var(--ink-2); flex-wrap: wrap; }
   .feed-tools .grow { flex: 1; min-width: 120px; }
@@ -139,7 +149,7 @@
     <div class="feed-card">
       <div class="feed-head">
         <span class="feed-title">Inspector</span>
-        <span class="feed-sub">drag to orbit · click inside the outline to aim</span>
+        <span class="feed-sub">drag to orbit · click inside the outline to aim · robot stands on its base</span>
       </div>
       <div class="feed-frame"><canvas id="view-inspector" width="460" height="345"></canvas></div>
       <div class="feed-tools">
@@ -154,23 +164,25 @@
         <span class="feed-title">CAM 01 · side sensor</span>
         <span class="feed-sub">what the controllers see · drag the plane</span>
       </div>
-      <div class="feed-frame"><canvas id="view-side" width="460" height="345"></canvas></div>
+      <div class="feed-row">
+        <div class="feed-frame"><canvas id="view-side" width="460" height="345"></canvas></div>
+        <div class="vslider-wrap"><input type="range" id="plane-y" min="0" max="345" step="0.5" value="172" aria-label="target plane height"></div>
+      </div>
       <div class="feed-tools">
-        <label for="plane-y">Target plane height</label>
-        <span class="grow"><input type="range" id="plane-y" min="-1.5" max="1.5" step="0.01" value="-0.1"></span>
-        <span class="val" id="plane-y-val">-10 mm</span>
+        <span class="val" id="plane-y-val" style="min-width:0;text-align:left">target plane z = 120 mm</span>
+        <span style="color:var(--muted)">slider and plane line sit at the same height</span>
       </div>
     </div>
   </div>
 
   <div class="readouts">
-    <span class="grp">
+    <span class="grp" data-robot="classical" title="click to hide or show this robot">
       <span class="dot" style="background:var(--classical)"></span><span class="name">Classical</span>
       <span><span class="lbl">error</span> <span class="val" id="ro-c-err">–</span></span>
       <span><span class="lbl">settle</span> <span class="val" id="ro-c-settle">–</span></span>
       <span><span class="lbl">state</span> <span class="val" id="ro-c-state">idle</span></span>
     </span>
-    <span class="grp">
+    <span class="grp" data-robot="learned" title="click to hide or show this robot">
       <span class="dot" style="background:var(--learned)"></span><span class="name">Learned ensemble</span>
       <span><span class="lbl">error</span> <span class="val" id="ro-l-err">–</span></span>
       <span><span class="lbl">settle</span> <span class="val" id="ro-l-settle">–</span></span>
@@ -180,7 +192,8 @@
   </div>
 
   <div class="controls">
-    <span class="hint">Both robots share the target, the disturbances and the planner.</span>
+    <span class="hint">Both robots share the target, the disturbances and the planner. Click a robot's name to hide or show it.</span>
+    <span class="flexctl"><label for="flex">Flexibility</label><input type="range" id="flex" min="0.7" max="1.8" step="0.1" value="1"><span class="val" id="flex-val">×1.0</span></span>
     <label class="switch"><input type="checkbox" id="tgl-tendons"><span class="knob"></span>Tendons</label>
     <label class="switch"><input type="checkbox" id="tgl-plan" checked><span class="knob"></span>Plan first</label>
     <label class="switch"><input type="checkbox" id="tgl-payload"><span class="knob"></span>Payload</label>
@@ -240,7 +253,9 @@
   <div class="change">
     <h3>2. What version 3 changes for that</h3>
     <p><b>Sensing and task.</b> Two fixed, calibrated cameras (CAM 01 side, CAM 02 top) see the four markers; each marker is triangulated and both controllers get the same 3D estimate and a 3D target with a 3D error. The cameras add no noise, so the triangulation is exact; the page does not pretend otherwise.</p>
-    <p><b>Placing a target.</b> A click in the inspector still gives a ray. The height plane in the side sensor view turns the ray back into a point; move the plane and the target slides along the same ray. The outline drawn at the plane's height is the reachable set's cross-section there: click inside it and the target is reachable, outside it and the trial is marked beyond reach, the plan stops at the closest reachable point, and the ensemble flags a target it was never shown.</p>
+    <p><b>Placing a target.</b> A click in the inspector still gives a ray. The height plane, set with the vertical slider beside the side sensor view (thumb and plane line sit at the same height) or by dragging the plane itself, turns the ray back into a point; move the plane and the target slides along the same ray. The outline drawn at the plane's height is the reachable set's cross-section there, from a sampled occupancy grid: near the base it is a ring, because a robot of fixed length cannot bring its tip next to its own base. Click inside it and the target is reachable; outside it the trial is marked beyond reach, the plan stops at the closest reachable point, and the ensemble flags a target it was never shown.</p>
+    <p><b>Flexibility.</b> The crescent is the mechanism, not the controller: what the tip can reach is set by the segment lengths and the curvature limits, and no amount of training moves it. The Flexibility slider scales the curvature limits (×1.0 is the original 126° and 119° per segment; ×1.8 is about 227° and 214°), and the planner, the envelope and the outline follow. The ensemble was trained across the whole range, so its warning refers to targets outside what the most flexible setting was ever asked to reach.</p>
+    <p><b>Orientation.</b> The robot stands on its base with the axis up and gravity along the axis. An upright straight robot does not sag; the further a segment leans, the larger the component of gravity across it, and the simulator's droop grows with that lean and with the payload. Version 1's horizontal cantilever sagged everywhere; this is the more honest picture for a bench-mounted robot, and the one the ensemble is now trained on.</p>
     <p><b>Views.</b> The inspector orbits the workspace (drag), with side, top and isometric presets; the side and top presets are the sensors' own poses, so what the controllers see can be compared with any other angle. The tube is drawn with one constant radius. Segment ends are filled markers, midpoints hollow rings: two segments, one midpoint each.</p>
   </div>
 
@@ -252,7 +267,8 @@
   <div class="change">
     <h3>4. Inverse kinematics</h3>
     <p><b>Version 1 solved none.</b> Both controllers were local laws: the classical one a damped pseudo-inverse of the ideal model's pixel Jacobian at its believed configuration, integrated into a curvature command; the learned one a regressed gain matrix of the same shape. Nothing chose a configuration deliberately. <b>Version 3</b> keeps local feedback laws on the 3D error (the classical one now differentiates the ideal model for a 3×4 Jacobian; the ensemble was retrained on triangulated markers and a 3D error) and adds a planning layer above both: when a target is set, the inverse kinematics is solved numerically on the ideal model (a coarse global search over 12,000 sampled configurations for those whose tip lands near the target, the one nearest the current configuration refined by damped Gauss-Newton inside the curvature limits; if nothing reaches the target, the closest reachable point), a straight configuration path runs to it at 60% of the actuator rate limit, and each controller tracks that reference with feed-forward plus its own feedback. When the path ends, the loop is the direct law again. The plan is only as good as the ideal model; under payload the feedback term carries the difference.</p>
-    <p><b>Is the plan needed with a 3D target?</b> Measured, not assumed: the "Plan first" switch above turns it off, and the table below reports both. With the direct law, the classical controller sent to a workspace-edge target from the rest pose still ends stalled in the wrong bending plane, 115 mm short; the scripted demo opens with exactly that. Over random edge targets (table below) the direct classical law settles 23 of 40 and stalls about 25 mm short on average; under the plan it settles 40 of 40. The learned law is a different story: about 30% of those edge targets lie outside the population it was trained on, it flags them and drops its own authority to 0.3x, and that costs settle rate, 22 of 40 direct and 35 of 40 under the plan, with small steady-state errors when it does settle. Warning and slowing down is the designed behaviour; its price is in the table. On interior targets nothing is flagged, the plan costs the classical controller about 0.4 s of settle time, and the learned controller is marginally faster with it. A null-space term (curvature minimization, or a pull toward a good configuration) was tried before the planner and moved the numbers only slightly, because the failure is a basin, not the redundancy resolution.</p>
+    <p><b>Is the plan needed with a 3D target?</b> Measured, not assumed: the "Plan first" switch above turns it off, and the table below reports both, for targets above the table the robot stands on. On interior targets the direct laws settle about 35 of 40 and the plan takes both to 40 of 40 at a cost of about 0.3 s. On edge targets the direct classical law loses 12 of 40 and stalls about 12 mm short (it commits to a bending plane from which the target is not reachable within the curvature limits); the direct learned law loses 8; the plan takes both to 40 of 40 and keeps the advantage under payload and drift. A null-space term (curvature minimization, or a pull toward a good configuration) was tried before the planner and moved the numbers only slightly, because the failure is a basin, not the redundancy resolution. The curled-back region below the base, where version 2 had found the direct laws stalling more than 100 mm short, is behind the table now and out of the evaluation.</p>
+    <p><b>What the retraining cost.</b> The ensemble now covers the whole flexibility range with one network. Against the single-mechanism ensemble of the previous build it is on par with the classical law under payload and somewhat behind it under drift, instead of ahead; that is the price of generality at this network size, and the table shows it rather than hiding it.</p>
   </div>
 
   <div class="change">
@@ -275,12 +291,12 @@
 
   <h2>What this is, and is not</h2>
   <ul class="notes">
-    <li>Both controllers see exactly the same thing: four markers triangulated from two fixed cameras. Neither reads simulator state. The inspector is for you, not for them.</li>
+    <li>Both controllers see exactly the same thing: four markers triangulated from two fixed cameras. Neither reads simulator state. The inspector is for you, not for them; hiding a robot hides its drawing, not its simulation.</li>
     <li>The two robots are identical simulator instances with the same random seed, so the comparison is fair. Both sit under the same planner, and the planner can be switched off for both.</li>
-    <li>The robot's geometry is fixed: constant arc lengths, constant curvature per segment, markers at fixed arc positions (filled at the segment ends, hollow at the midpoints). What changed on screen in version 1 was perspective. The Tendons switch strips the tube and draws what actuates each segment: three tendons at fixed radius (drawn at 2.5 times the model's tendon radius so they can be told apart), brighter and thicker the harder the simulator says they are pulled, with spacer discs at the base, midpoint and end of each segment.</li>
+    <li>The robot's geometry is fixed: constant arc lengths, constant curvature per segment, markers at fixed arc positions (filled at the segment ends, hollow at the midpoints). What changed on screen in version 1 was perspective. The Tendons switch strips the tube and draws what actuates each segment: three tendons at fixed radius (drawn at 2.5 times the model's tendon radius so they can be told apart) with spacer discs at the base, midpoint and end of each segment. Their colour runs from white (slack) to the robot's colour (fully shortened), driven by the simulator's transmitted tendon displacement, so backlash and drift show as tendons that stay coloured after the command has moved on.</li>
     <li>The "truth" simulator is phenomenological: constant curvature plus actuator lag, tendon backlash, gravity droop, inter-segment coupling and optional tendon drift. Its curvature is biased by load, not redistributed along the arc, so it stays in the constant-curvature shape family; a rod model would be the next step, and the model mismatch here is milder than a real tendon-driven robot's.</li>
     <li>The learned controller imitates a training-time expert that could see the simulator's true Jacobian. At run time it has no such access. Three signals, all set from data, flag extrapolation: the target outside the population its training targets were drawn from (tips at up to 90% of the curvature limits, decided by the same inverse kinematics with the limits scaled to 90%), the feature vector far from the training set, or the five networks disagreeing. Any of them and it says so and lowers its own gain; the plan's feed-forward is not scaled, because it does not come from the networks.</li>
-    <li>The translucent envelope is the outer boundary of the ideal model's reachable set. The truth robot never leaves it; the planner decides reachability point by point.</li>
+    <li>Two cages. The grey one is the outer boundary of the ideal model's reachable set at the current flexibility (the truth robot never leaves it; the planner decides reachability point by point). The faint blue one is the population the ensemble was trained on, tips at up to 90% of the limits at flexibility ×1.8; a target outside it is flagged.</li>
     <li>The model is dimensionless. Millimetres on this page are a display convention (robot length 180 mm), not a claim about any device.</li>
     <li>This page is the whole system: simulator, sensing, planner, controllers, pretrained weights and the precomputed envelope in one file. Training, envelope and evaluation scripts are in the repository.</li>
   </ul>

@@ -2,16 +2,26 @@
 //
 // Configuration q = [kx1, ky1, kx2, ky2]: each segment bends with a curvature
 // vector (kx, ky); magnitude is the curvature, direction is the bending plane.
-// The robot's base frame has +z along the undeformed backbone (horizontal in
-// the world; gravity is -y). Units are normalized (segment lengths ~1); the
-// demo does not claim a physical scale.
+// The robot's base frame has +z along the undeformed backbone. The robot
+// stands upright: +z is world up and gravity is -z, along the axis. Units are
+// normalized (segment lengths ~1); the demo does not claim a physical scale.
 (function (CR) {
   'use strict';
   const { m3 } = CR;
 
   const SEG_LEN = [1.0, 0.8];
   const NSEG = 2;
-  const KMAX = [2.2, 2.6]; // max curvature magnitude per segment
+  const KMAX_BASE = [2.2, 2.6]; // max curvature magnitude per segment at flexibility 1
+  const KMAX = KMAX_BASE.slice(); // live limits; scaled by setFlex (same array object everywhere)
+  // Flexibility scales the curvature limits of the mechanism. It changes what
+  // the robot can reach, not what any controller knows; the planner, envelope
+  // and grid are rebuilt by the app when it changes.
+  function setFlex(f) {
+    for (let i = 0; i < NSEG; i++) KMAX[i] = KMAX_BASE[i] * f;
+    return f;
+  }
+  const flex = () => KMAX[0] / KMAX_BASE[0];
+  const FLEX_RANGE = [0.7, 1.8]; // slider range; the ensemble is trained across it
 
   // Pose (position + rotation) at arc length s along one segment with
   // curvature vector (kx, ky), in the segment's base frame.
@@ -86,5 +96,5 @@
     return out;
   }
 
-  CR.pcc = { SEG_LEN, NSEG, KMAX, NQ: 2 * NSEG, segPose, poseAt, tip3, backbone, markers3, clampQ };
+  CR.pcc = { SEG_LEN, NSEG, KMAX, KMAX_BASE, FLEX_RANGE, setFlex, flex, NQ: 2 * NSEG, segPose, poseAt, tip3, backbone, markers3, clampQ };
 })(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));

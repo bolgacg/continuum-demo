@@ -13,7 +13,7 @@
   const HUD_DIM = 'rgba(138,143,136,0.28)';
   const WARNING = '#fab219';
   const R_TUBE = 0.038;   // constant drawn radius; the model has no cross-section
-  const PLANE = { x: [-1.7, 1.7], z: [-1.3, 2.1] };
+  const PLANE = { x: [-1.7, 1.7], y: [-1.7, 1.7] }; // height plane z = h
 
   function hexToRgb(hex) {
     return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
@@ -58,8 +58,8 @@
   }
 
   const layerCache = new Map();
-  function staticLayers(key, cam, W, H, volume) {
-    const sig = cam.pos.map((v) => v.toFixed(5)).join(',') + '|' + cam.up.map((v) => v.toFixed(5)).join(',') + '|' + W + 'x' + H + '|' + !!(volume && volume.show);
+  function staticLayers(key, cam, W, H, volume, trainVolume) {
+    const sig = cam.pos.map((v) => v.toFixed(5)).join(',') + '|' + cam.up.map((v) => v.toFixed(5)).join(',') + '|' + W + 'x' + H + '|' + !!(volume && volume.show) + '|' + !!(trainVolume && trainVolume.mesh);
     let entry = layerCache.get(key);
     if (entry && entry.sig === sig) return entry;
     const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
@@ -71,6 +71,15 @@
       return { c, g };
     };
     const far = make(), near = make();
+    // training-limit cage: the population the ensemble was trained on, as a
+    // sparse wireframe in the learned controller's colour, far half only
+    // behind the scene and near half in front, no fill
+    if (trainVolume && trainVolume.mesh) {
+      const tq = domeQuads(cam, trainVolume.mesh, 4);
+      fillQuads(far.g, tq.far, 'rgba(0,0,0,0)', 'rgba(57,135,229,0.16)');
+      fillQuads(near.g, tq.near, 'rgba(0,0,0,0)', 'rgba(57,135,229,0.11)');
+    }
+    drawTable(far.g, cam);
     if (volume && volume.show && volume.mesh) {
       // smooth silhouette from the full-resolution mesh, wireframe from a
       // coarser one; both rasterized once per camera pose
@@ -86,8 +95,30 @@
     return entry;
   }
 
-  function drawPlane(ctx, cam, y, o) {
-    const c = [[PLANE.x[0], y, PLANE.z[0]], [PLANE.x[0], y, PLANE.z[1]], [PLANE.x[1], y, PLANE.z[1]], [PLANE.x[1], y, PLANE.z[0]]];
+  // The robot stands on a table plate at z = 0 (drawn only; no contact is
+  // modelled, and the height plane cannot be lowered below it).
+  const TABLE_R = 0.7;
+  function drawTable(ctx, cam) {
+    const ring = [];
+    for (let k = 0; k <= 48; k++) {
+      const a = (k / 48) * 2 * Math.PI;
+      const p = cam.project([TABLE_R * Math.cos(a), TABLE_R * Math.sin(a), 0]);
+      if (!p) return;
+      ring.push(p);
+    }
+    ctx.beginPath();
+    ctx.moveTo(ring[0][0], ring[0][1]);
+    for (let k = 1; k < ring.length; k++) ctx.lineTo(ring[k][0], ring[k][1]);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(58,61,57,0.55)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(138,143,136,0.35)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  function drawPlane(ctx, cam, h, o) {
+    const c = [[PLANE.x[0], PLANE.y[0], h], [PLANE.x[0], PLANE.y[1], h], [PLANE.x[1], PLANE.y[1], h], [PLANE.x[1], PLANE.y[0], h]];
     const p = c.map((w) => cam.project(w));
     if (p.some((v) => !v)) return;
     ctx.fillStyle = o.active ? 'rgba(232,234,230,0.10)' : 'rgba(232,234,230,0.06)';
@@ -99,14 +130,17 @@
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
-    // grab handle at the near-right edge (base side, toward the camera)
-    const hpx = cam.project([PLANE.x[1], y, PLANE.z[0] + 0.15]);
+    // grab handle at the near-right corner (toward the side camera, image-right)
+    const hpx = cam.project([PLANE.x[1] - 0.2, PLANE.y[1] - 0.15, h]);
     if (hpx) {
       ctx.fillStyle = o.active ? '#e8eae6' : 'rgba(232,234,230,0.7)';
       ctx.fillRect(hpx[0] - 5, hpx[1] - 5, 10, 10);
       ctx.font = '10px ui-monospace, Menlo, Consolas, monospace';
       ctx.fillStyle = HUD;
-      ctx.fillText('target plane  y = ' + (y * 100).toFixed(0) + ' mm', hpx[0] - 150, hpx[1] - 9);
+      const txt = 'target plane  z = ' + (h * 100).toFixed(0) + ' mm';
+      const tw = ctx.measureText(txt).width;
+      const right = Math.min(hpx[0] - 12, cam.w - 14);
+      ctx.fillText(txt, Math.max(14, right - tw), hpx[1] + 4);
     }
   }
 
@@ -121,7 +155,6 @@
     const { truth } = CR;
     const q = r.sim.qEff();
     const rt = truth.PARAMS.tendonRadius * TENDON_DRAW_SCALE;
-    const light = rgb.map((c) => Math.round(c + (255 - c) * 0.5));
     for (let i = 0; i < pcc.NSEG; i++) {
       const L = pcc.SEG_LEN[i];
       const pullMax = truth.PARAMS.tendonRadius * L * pcc.KMAX[i];
@@ -141,10 +174,10 @@
         if (!pts.length) continue;
         // one polyline per tendon (one stroke), depth = its mean depth
         prims.push({ z: zSum / pts.length, draw() {
-          const alpha = 0.3 + 0.7 * pull;
-          const c = pull > 0.03 ? light : [140, 143, 138];
-          ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${alpha.toFixed(3)})`;
-          ctx.lineWidth = 1.2 + 2.6 * pull;
+          // white = slack, host colour = fully shortened; constant width
+          const c = rgb.map((v) => Math.round(236 + (v - 236) * pull));
+          ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},0.9)`;
+          ctx.lineWidth = 2.2;
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
           ctx.beginPath();
@@ -205,15 +238,8 @@
     ctx.fillStyle = FEED_BG;
     ctx.fillRect(0, 0, W, H);
 
-    // reticle + corner brackets (camera-feed look, both views)
-    ctx.strokeStyle = 'rgba(138,143,136,0.08)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    for (let i = 1; i <= 2; i++) {
-      ctx.moveTo((W * i) / 3, 0); ctx.lineTo((W * i) / 3, H);
-      ctx.moveTo(0, (H * i) / 3); ctx.lineTo(W, (H * i) / 3);
-    }
-    ctx.stroke();
+    // corner brackets (camera-feed look, both views); no reticle grid: the only
+    // grids on screen are the two cages, movement limit and training limit
     ctx.strokeStyle = HUD_DIM;
     const cb = 14, cm = 8;
     ctx.beginPath();
@@ -225,7 +251,7 @@
     // static layers (floor grid + envelope halves) are rasterized once per
     // camera pose into offscreen canvases and blitted; re-rendered only when
     // the camera moves (orbit drag) or the view is first drawn
-    const layers = staticLayers(o.layerKey || 'default', cam, W, H, o.volume);
+    const layers = staticLayers(o.layerKey || 'default', cam, W, H, o.volume, o.trainVolume);
     ctx.drawImage(layers.far, 0, 0, W, H);
 
     if (o.plane && o.plane.show) drawPlane(ctx, cam, o.plane.y, o.plane);
@@ -363,10 +389,17 @@
     ctx.fillText(o.label, 14, H - 14);
     const tstr = 't=' + o.t.toFixed(1).padStart(6) + 's';
     ctx.fillText(tstr, W - 14 - ctx.measureText(tstr).width, H - 14);
+    let hintY = 22;
+    if (o.naked) {
+      ctx.fillStyle = 'rgba(232,234,230,0.6)';
+      ctx.font = '10px ui-monospace, Menlo, Consolas, monospace';
+      ctx.fillText('tendons: white = slack, colour = fully shortened (transmitted displacement)', 14, hintY);
+      hintY += 14;
+    }
     if (o.hint) {
       ctx.fillStyle = 'rgba(232,234,230,0.6)';
       ctx.font = '10.5px ui-monospace, Menlo, Consolas, monospace';
-      ctx.fillText(o.hint, 14, 22);
+      ctx.fillText(o.hint, 14, hintY);
     }
 
     if (o.ood) {
@@ -390,19 +423,19 @@
     ctx.restore();
   }
 
-  // Screen v of the plane's centre line in a camera (for drag hit tests), and
-  // the plane height that puts it under a given pixel row: intersect the
-  // pixel's ray with the vertical plane x = CENTER.x.
-  function planeScreenY(cam, y) {
-    const p = cam.project([camera.CENTER[0], y, camera.CENTER[2]]);
+  // Screen row of the height plane at the axis (for drag hit tests and the
+  // 1:1 vertical slider), and the plane height that puts it under a given
+  // pixel row: intersect the pixel's ray with the vertical plane x = CENTER.x.
+  function planeScreenY(cam, h) {
+    const p = cam.project([camera.CENTER[0], camera.CENTER[1], h]);
     return p ? p[1] : null;
   }
   function planeYFromPixel(cam, u, v) {
     const d = cam.rayDir(u, v);
     if (Math.abs(d[0]) < 1e-6) return null;
     const t = (camera.CENTER[0] - cam.pos[0]) / d[0];
-    return cam.pos[1] + t * d[1];
+    return cam.pos[2] + t * d[2];
   }
 
-  CR.scene = { draw, planeScreenY, planeYFromPixel, R_TUBE, TENDON_DRAW_SCALE };
+  CR.scene = { draw, planeScreenY, planeYFromPixel, invalidateLayers: () => layerCache.clear(), R_TUBE, TENDON_DRAW_SCALE };
 })(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));

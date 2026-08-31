@@ -4,7 +4,8 @@
 // tip positions, and describe their outer boundary as a radial envelope
 // around the cloud's centroid: for each direction (theta, phi) the largest
 // tip radius seen in that angular bin, hole-filled, smoothed, and then scaled
-// up by the smallest factor that keeps 99.9% of the samples inside. The
+// up by the smallest factor that keeps 99.95% of the samples inside, plus
+// half a percent. The
 // result is a closed, smooth surface, the "dome" drawn in the inspector. It
 // is an outer envelope: the reachable set is a solid inside it, and where the
 // true set is concave the envelope is generous. Reachability of a specific
@@ -14,7 +15,7 @@
   const { pcc, v3 } = CR;
 
   function reachableVolume(opts) {
-    const o = Object.assign({ samples: 200000, nt: 36, np: 72, seed: 3, keep: 0.999, smooth: 2, scale: 1.0 }, opts || {});
+    const o = Object.assign({ samples: 200000, nt: 36, np: 72, seed: 3, keep: 0.9995, margin: 1.005, smooth: 2, scale: 1.0 }, opts || {});
     const rng = CR.makeRng(o.seed);
     const pts = new Float64Array(o.samples * 3);
     const c = [0, 0, 0];
@@ -32,8 +33,8 @@
     const rmax = new Float64Array(nt * np);
     const binOf = (p) => {
       const d = v3.sub(p, c), r = v3.norm(d);
-      const th = Math.acos(Math.max(-1, Math.min(1, d[1] / (r || 1e-9))));
-      const ph = Math.atan2(d[2], d[0]);
+      const th = Math.acos(Math.max(-1, Math.min(1, d[2] / (r || 1e-9)))); // polar axis = robot axis (+z)
+      const ph = Math.atan2(d[1], d[0]);
       const i = Math.min(nt - 1, Math.floor((th / Math.PI) * nt));
       const j = ((Math.floor(((ph + Math.PI) / (2 * Math.PI)) * np) % np) + np) % np;
       return { i, j, r };
@@ -82,7 +83,7 @@
       ratios[n] = b.r / grid[b.i * np + b.j];
     }
     ratios.sort();
-    const scale = Math.max(1, ratios[Math.floor(o.keep * (o.samples - 1))]);
+    const scale = Math.max(1, ratios[Math.floor(o.keep * (o.samples - 1))]) * o.margin;
     for (let k = 0; k < grid.length; k++) grid[k] *= scale;
     let inside = 0;
     for (let n = 0; n < o.samples; n++) if (ratios[n] <= scale) inside++;
@@ -94,11 +95,11 @@
     };
   }
 
-  // Direction for bin centres (theta from +y, phi about +y measured from +x
-  // toward +z, matching binOf above).
+  // Direction for bin centres (theta from +z, phi about +z measured from +x
+  // toward +y, matching binOf above).
   function dir(theta, phi) {
     const st = Math.sin(theta);
-    return [st * Math.cos(phi), Math.cos(theta), st * Math.sin(phi)];
+    return [st * Math.cos(phi), st * Math.sin(phi), Math.cos(theta)];
   }
 
   // Vertex grid of the envelope surface: rows theta (with pole rows added),
@@ -107,7 +108,7 @@
     const { nt, np, r, center } = vol;
     const rows = [];
     const poleR = (i) => { let s = 0; for (let j = 0; j < np; j++) s += r[i * np + j]; return s / np; };
-    rows.push(new Array(np).fill(0).map(() => v3.add(center, v3.scale([0, 1, 0], poleR(0)))));
+    rows.push(new Array(np).fill(0).map(() => v3.add(center, v3.scale([0, 0, 1], poleR(0)))));
     for (let i = 0; i < nt; i++) {
       const th = ((i + 0.5) / nt) * Math.PI;
       const row = [];
@@ -117,7 +118,7 @@
       }
       rows.push(row);
     }
-    rows.push(new Array(np).fill(0).map(() => v3.add(center, v3.scale([0, -1, 0], poleR(nt - 1)))));
+    rows.push(new Array(np).fill(0).map(() => v3.add(center, v3.scale([0, 0, -1], poleR(nt - 1)))));
     return rows;
   }
 
@@ -189,23 +190,23 @@
     return { min: j.min, res: j.res, n: j.n, bits };
   }
 
-  // Horizontal slice of the grid at height y, traced with marching squares:
+  // Horizontal slice of the grid at height h (z), traced with marching squares:
   // returns line segments (pairs of world points) covering every contour,
   // holes included. Corner values are cell occupancies; segments pass through
   // edge midpoints, so the outline sits half a cell outside occupied centres.
-  function gridSectionSegments(grid, y) {
+  function gridSectionSegments(grid, h) {
     const { n, res, min } = grid;
-    const j = Math.floor((y - min[1]) / res);
-    if (j < 0 || j >= n[1]) return [];
-    const cx = (i) => min[0] + (i + 0.5) * res, cz = (k) => min[2] + (k + 0.5) * res;
+    const k = Math.floor((h - min[2]) / res);
+    if (k < 0 || k >= n[2]) return [];
+    const cx = (i) => min[0] + (i + 0.5) * res, cy = (j) => min[1] + (j + 0.5) * res;
     const segs = [];
-    // corners of the marching cell (i,k): a=(i,k) b=(i+1,k) c=(i+1,k+1) d=(i,k+1)
-    for (let i = -1; i < n[0]; i++) for (let k = -1; k < n[2]; k++) {
-      const a = gridGet(grid, i, j, k), b = gridGet(grid, i + 1, j, k), c = gridGet(grid, i + 1, j, k + 1), d = gridGet(grid, i, j, k + 1);
+    // corners of the marching cell (i,j): a=(i,j) b=(i+1,j) c=(i+1,j+1) d=(i,j+1)
+    for (let i = -1; i < n[0]; i++) for (let j = -1; j < n[1]; j++) {
+      const a = gridGet(grid, i, j, k), b = gridGet(grid, i + 1, j, k), c = gridGet(grid, i + 1, j + 1, k), d = gridGet(grid, i, j + 1, k);
       const code = (a << 3) | (b << 2) | (c << 1) | d;
       if (code === 0 || code === 15) continue;
-      const top = [cx(i) + res / 2, y, cz(k)], right = [cx(i + 1), y, cz(k) + res / 2];
-      const bottom = [cx(i) + res / 2, y, cz(k + 1)], left = [cx(i), y, cz(k) + res / 2];
+      const top = [cx(i) + res / 2, cy(j), h], right = [cx(i + 1), cy(j) + res / 2, h];
+      const bottom = [cx(i) + res / 2, cy(j + 1), h], left = [cx(i), cy(j) + res / 2, h];
       const add = (p, q) => segs.push([p, q]);
       switch (code) {
         case 1: case 14: add(left, bottom); break;
@@ -222,35 +223,15 @@
     return segs;
   }
   // occupied cell centres on the slice (for tests and hints)
-  function gridSliceCells(grid, y) {
+  function gridSliceCells(grid, h) {
     const { n, res, min } = grid;
-    const j = Math.floor((y - min[1]) / res);
+    const k = Math.floor((h - min[2]) / res);
     const out = [];
-    if (j < 0 || j >= n[1]) return out;
-    for (let i = 0; i < n[0]; i++) for (let k = 0; k < n[2]; k++) {
-      if (gridGet(grid, i, j, k)) out.push([min[0] + (i + 0.5) * res, y, min[2] + (k + 0.5) * res]);
+    if (k < 0 || k >= n[2]) return out;
+    for (let i = 0; i < n[0]; i++) for (let j = 0; j < n[1]; j++) {
+      if (gridGet(grid, i, j, k)) out.push([min[0] + (i + 0.5) * res, min[1] + (j + 0.5) * res, h]);
     }
     return out;
-  }
-
-  // Horizontal cross-section of the envelope at height y: polygon of world
-  // points ordered by azimuth; empty if the plane misses the envelope.
-  function envelopeSection(vol, y, mesh) {
-    const rows = mesh || envelopeMesh(vol);
-    const cols = rows[1].length;
-    const poly = [];
-    for (let j = 0; j < cols; j++) {
-      for (let i = 0; i < rows.length - 1; i++) {
-        const a = rows[i][j], b = rows[i + 1][j];
-        const da = a[1] - y, db = b[1] - y;
-        if ((da > 0) !== (db > 0)) {
-          const t = da / (da - db);
-          poly.push([a[0] + (b[0] - a[0]) * t, y, a[2] + (b[2] - a[2]) * t]);
-          break;
-        }
-      }
-    }
-    return poly;
   }
 
   // Is a world point inside the envelope (nearest-bin radial test)?
@@ -258,13 +239,13 @@
     const { nt, np, r, center } = vol;
     const d = v3.sub(p, center), rr = v3.norm(d);
     if (rr < 1e-9) return true;
-    const th = Math.acos(Math.max(-1, Math.min(1, d[1] / rr)));
-    const ph = Math.atan2(d[2], d[0]);
+    const th = Math.acos(Math.max(-1, Math.min(1, d[2] / rr)));
+    const ph = Math.atan2(d[1], d[0]);
     const i = Math.min(nt - 1, Math.floor((th / Math.PI) * nt));
     const j = ((Math.floor(((ph + Math.PI) / (2 * Math.PI)) * np) % np) + np) % np;
     return rr <= r[i * np + j];
   }
 
-  CR.workspace = { reachableVolume, envelopeMesh, envelopeSection, insideEnvelope,
+  CR.workspace = { reachableVolume, envelopeMesh, insideEnvelope,
     reachableGrid, gridContains, gridToJSON, gridFromJSON, gridSectionSegments, gridSliceCells };
 })(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));

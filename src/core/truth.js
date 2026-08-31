@@ -5,7 +5,9 @@
 //
 //   - actuator lag + rate limit on tendon displacements
 //   - tendon backlash (play operator) -> deadband hysteresis
-//   - load-dependent droop: curvature biased toward gravity, scaled by payload
+//   - load-dependent droop: curvature biased toward gravity's lateral
+//     component at each segment's midpoint, scaled by payload (upright robot:
+//     no sag while straight, more the further it leans)
 //   - inter-segment coupling: proximal tendons disturb the distal segment
 //   - optional slow tendon drift (creep + random walk)
 //
@@ -29,7 +31,7 @@
 
   const NSEG = pcc.NSEG;
   const BETA = [0, (2 * Math.PI) / 3, (4 * Math.PI) / 3];
-  const G_WORLD = [0, -1, 0];
+  const G_WORLD = [0, 0, -1]; // upright robot: gravity along the axis, toward the base
 
   // Curvature vector -> 3 tendon displacements for segment i (linear map).
   function tendonsFromK(kx, ky, i) {
@@ -49,31 +51,27 @@
   }
 
   // Static part of the truth model: base curvature per segment -> effective
-  // curvature after coupling and gravity droop. Droop is applied along the
-  // world gravity direction expressed in each segment's base frame, so a
-  // segment that has been bent around still sags toward the floor.
+  // curvature after coupling and gravity droop. Gravity is expressed in the
+  // frame at each segment's midpoint; its component perpendicular to the
+  // backbone there biases the curvature toward gravity. An upright straight
+  // robot therefore does not sag; the further a segment leans, the more it
+  // sags, and the payload scales that.
   function applyStatic(qBase, payload) {
-    const k1 = [qBase[0], qBase[1]];
-    const k2 = [
+    const q = [
+      qBase[0], qBase[1],
       qBase[2] + P.coupling * qBase[0],
       qBase[3] + P.coupling * qBase[1],
     ];
-    const d1 = P.droopSelf[0] + payload * P.droopLoad[0];
-    k1[1] += -d1; // segment 1 base frame is the world frame; gravity is -y
-
-    const q1 = [k1[0], k1[1], 0, 0];
-    const R1 = pcc.poseAt(q1, 0, pcc.SEG_LEN[0]).R;
-    // R1 maps local -> world; use its transpose to bring gravity into the
-    // segment-2 base frame, then bias curvature toward its x-y projection.
-    const gLoc = [
-      R1[0] * G_WORLD[0] + R1[3] * G_WORLD[1] + R1[6] * G_WORLD[2],
-      R1[1] * G_WORLD[0] + R1[4] * G_WORLD[1] + R1[7] * G_WORLD[2],
-    ];
-    const d2 = P.droopSelf[1] + payload * P.droopLoad[1];
-    k2[0] += d2 * gLoc[0];
-    k2[1] += d2 * gLoc[1];
-
-    return pcc.clampQ([k1[0], k1[1], k2[0], k2[1]]);
+    for (let i = 0; i < NSEG; i++) {
+      const R = pcc.poseAt(q, i, 0.5 * pcc.SEG_LEN[i]).R; // local -> world at the midpoint
+      // R^T G: gravity in the midpoint frame; keep the x-y (bending-plane) part
+      const gx = R[0] * G_WORLD[0] + R[3] * G_WORLD[1] + R[6] * G_WORLD[2];
+      const gy = R[1] * G_WORLD[0] + R[4] * G_WORLD[1] + R[7] * G_WORLD[2];
+      const d = P.droopSelf[i] + payload * P.droopLoad[i];
+      q[2 * i] += d * gx;
+      q[2 * i + 1] += d * gy;
+    }
+    return pcc.clampQ(q);
   }
 
   function createTruth(seed) {

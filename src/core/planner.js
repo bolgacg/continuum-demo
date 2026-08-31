@@ -32,24 +32,34 @@
   const GN_ITERS = 30;       // Gauss-Newton refinement steps
   const PATH_RATE = 0.6 * ibvs.RATE_MAX; // configuration speed along the plan
 
-  function sampleQ(rng, scale) {
+  function sampleQ(rng, limits) {
     const q = [];
     for (let i = 0; i < pcc.NSEG; i++) {
       const a = rng() * 2 * Math.PI;
-      const k = Math.sqrt(rng()) * scale * pcc.KMAX[i];
+      const k = Math.sqrt(rng()) * limits[i];
       q.push(k * Math.cos(a), k * Math.sin(a));
     }
     return q;
   }
 
-  function buildTable(seed, scale) {
+  function buildTable(seed, limits) {
     const rng = CR.makeRng(seed || 11);
     const table = [];
     for (let n = 0; n < TABLE_N; n++) {
-      const q = sampleQ(rng, scale);
+      const q = sampleQ(rng, limits);
       table.push({ q, p: pcc.tip3(q) });
     }
     return table;
+  }
+
+  // clamp each segment's curvature magnitude to absolute limits
+  function clampTo(q, limits) {
+    const out = q.slice();
+    for (let i = 0; i < pcc.NSEG; i++) {
+      const k = Math.hypot(out[2 * i], out[2 * i + 1]);
+      if (k > limits[i]) { const f = limits[i] / k; out[2 * i] *= f; out[2 * i + 1] *= f; }
+    }
+    return out;
   }
 
   function qDist(a, b) {
@@ -60,7 +70,7 @@
 
   // Damped Gauss-Newton on r(q) = tip(q) - target, minimum-change from the
   // coarse candidate, curvature limits enforced by projection.
-  function refine(q0, target, scale) {
+  function refine(q0, target, limits) {
     let q = q0.slice();
     for (let it = 0; it < GN_ITERS; it++) {
       const r = v3.sub(pcc.tip3(q), target);
@@ -71,18 +81,25 @@
       for (let i = 0; i < 4; i++) {
         next[i] = q[i] - (P[3 * i] * r[0] + P[3 * i + 1] * r[1] + P[3 * i + 2] * r[2]);
       }
-      q = pcc.clampQ(next, scale);
+      q = clampTo(next, limits);
     }
     return q;
   }
 
-  // opts.limitScale < 1 builds a planner whose configurations stay inside a
-  // fraction of the curvature limits; used as an exact membership test for
-  // "is this target inside the population the ensemble was trained on"
-  // (training targets were tips at up to 90% of the limits).
+  // The planner captures ABSOLUTE curvature limits when built (or rebuilt):
+  // opts.limitScale times the mechanism's current limits. The app rebuilds its
+  // planner when the flexibility changes; the ensemble's training-population
+  // test is a second planner built once, at the limits the training covered,
+  // and never rebuilt.
   function createPlanner(opts) {
     const limitScale = (opts && opts.limitScale) || 1;
-    const table = buildTable(opts && opts.seed, limitScale);
+    const seed = opts && opts.seed;
+    let limits = pcc.KMAX.map((k) => k * limitScale);
+    let table = buildTable(seed, limits);
+    function rebuild() {
+      limits = pcc.KMAX.map((k) => k * limitScale);
+      table = buildTable(seed, limits);
+    }
 
     // Global IK: nearest-in-configuration among the samples that reach the
     // target, refined; if nothing reaches it, the sample with the smallest
@@ -98,8 +115,8 @@
           if (d < bestD) { bestD = d; best = e; }
         }
       }
-      const seed = best || fallback;
-      const q = refine(seed.q, target, limitScale);
+      const cand = best || fallback;
+      const q = refine(cand.q, target, limits);
       const residual = v3.norm(v3.sub(pcc.tip3(q), target));
       return { q, residual, reachable: residual < REACH_TOL };
     }
@@ -131,7 +148,7 @@
       };
     }
 
-    return { plan, solveIK, table, limitScale };
+    return { plan, solveIK, rebuild, limitScale, limits: () => limits.slice(), table: () => table };
   }
 
   // Wraps a controller (classical or learned) in the plan-then-track loop.

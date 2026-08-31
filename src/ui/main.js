@@ -17,7 +17,8 @@
   const SETTLE_U = 0.05;          // 5 mm settle band
   const SETTLE_HOLD = 0.8, TRIAL_S = 6;
   const FAN_HORIZON = 0.35;       // seconds of predicted motion shown by the fan
-  const PLANE_MIN = -1.5, PLANE_MAX = 1.5;
+  const PLANE_MIN = 0.05, PLANE_MAX = 2.1; // height plane range (z): above the table the robot stands on
+  const FLEX_RANGE = pcc.FLEX_RANGE;
 
   const $ = (id) => document.getElementById(id);
   const camSide = camera.sideCamera(W, H);
@@ -26,16 +27,35 @@
   // ---- controllers, planner, envelope ----
   const weights = typeof CR_WEIGHTS !== 'undefined' ? CR_WEIGHTS : null;
   const ws = (typeof CR_WORKSPACE !== 'undefined' && CR_WORKSPACE && CR_WORKSPACE.reach) ? CR_WORKSPACE : null;
-  const volume = ws ? ws.reach : workspace.reachableVolume({ samples: 60000 });
   const planner = plannerMod.createPlanner();
   // membership test for the ensemble's training population: the same IK with
-  // the curvature limits scaled to 90%
-  const trainIK = plannerMod.createPlanner({ limitScale: 0.9, seed: 13 });
+  // the curvature limits at 90% of the highest flexibility it was trained on.
+  // Built once at flexibility 1 and never rebuilt.
+  const trainIK = plannerMod.createPlanner({ limitScale: 0.9 * FLEX_RANGE[1], seed: 13 });
   const classicalInner = ibvs.createClassical();
   const learnedInner = learned.createLearned(weights, { targetTest: (p) => trainIK.solveIK(p, [0, 0, 0, 0]).reachable });
-  const mesh = workspace.envelopeMesh(volume);
-  const grid = ws && ws.grid ? workspace.gridFromJSON(ws.grid) : workspace.reachableGrid({ samples: 120000 });
-  let section = workspace.gridSectionSegments(grid, camera.CENTER[1]);
+  // reach geometry at the current flexibility (embedded for x1.0, computed otherwise)
+  let volume = ws ? ws.reach : workspace.reachableVolume({ samples: 80000 });
+  let mesh = workspace.envelopeMesh(volume);
+  // the ensemble's training population (limits x0.9 x highest flexibility), fixed
+  const trainMesh = ws && ws.train ? workspace.envelopeMesh(ws.train) : null;
+  let grid = ws && ws.grid ? workspace.gridFromJSON(ws.grid) : workspace.reachableGrid({ samples: 120000 });
+  let planeY = 1.2;               // height plane z, default through the upper workspace
+  let section = workspace.gridSectionSegments(grid, planeY);
+  function applyFlex(f) {
+    pcc.setFlex(f);
+    planner.rebuild();
+    if (Math.abs(f - 1) < 1e-9 && ws) {
+      volume = ws.reach; grid = workspace.gridFromJSON(ws.grid);
+    } else {
+      volume = workspace.reachableVolume({ samples: 100000 });
+      grid = workspace.reachableGrid({ samples: 150000 });
+    }
+    mesh = workspace.envelopeMesh(volume);
+    section = workspace.gridSectionSegments(grid, planeY);
+    scene.invalidateLayers();
+  }
+  const flexLabel = (f) => '×' + f.toFixed(1) + ' · max bend ' + Math.round((pcc.KMAX_BASE[0] * f * pcc.SEG_LEN[0] * 180) / Math.PI) + '° / ' + Math.round((pcc.KMAX_BASE[1] * f * pcc.SEG_LEN[1] * 180) / Math.PI) + '°';
 
   const robots = {
     classical: {
@@ -88,8 +108,8 @@
   let target = null;          // 3D point
   let lastRay = null;         // {origin, dir} of the click that placed the target
   let rayNote = '';
-  let planeY = camera.CENTER[1];
   let payloadTarget = 0, driftOn = false;
+  const visible = { classical: true, learned: true };
   let trial = null;
   let trialCount = 0;
   let demo = null;
@@ -209,7 +229,7 @@
     const learnedOut = robots.learned && robots.learned.lastOut;
     const live = target && robots.classical.lastOut;
     const phase = live ? (robots.classical.lastOut.tracking ? ' · PLAN' : ' · LOOP') : '';
-    const robotsDraw = robotList.map((r) => ({
+    const robotsDraw = robotList.filter((r) => visible[r.key]).map((r) => ({
       sim: r.sim, accent: r.accent, fan: fanFor(r),
       sRef: r.lastOut ? r.lastOut.sRef : null,
       tracking: r.lastOut ? r.lastOut.tracking : false,
@@ -217,6 +237,7 @@
     const common = {
       W, H, robots: robotsDraw, target, naked: showTendons, section,
       volume: { mesh, show: true },
+      trainVolume: { mesh: trainMesh },
       ood: !!(target && learnedOut && learnedOut.ood), oodGain: learned.OOD_GAIN, t,
     };
     scene.draw(views.inspector.ctx, Object.assign({}, common, {
@@ -246,7 +267,8 @@
         $('ro-l-err').textContent = last.errL != null ? last.errL.toFixed(1) + ' mm' : '–';
         $('ro-l-sigma').textContent = last.sigma != null ? last.sigma.toFixed(3) : '–';
       }
-      $('plane-y-val').textContent = (planeY * MM).toFixed(0) + ' mm';
+      $('plane-y-val').textContent = 'target plane z = ' + (planeY * MM).toFixed(0) + ' mm';
+      $('flex-val').textContent = flexLabel(pcc.flex());
     }
     frames++;
     const now = performance.now();
@@ -276,7 +298,7 @@
 
   // ---- target placement: click ray x height plane ----
   function targetFromRay() {
-    const hit = camera.rayPlaneY(lastRay.origin, lastRay.dir, planeY);
+    const hit = camera.rayPlaneZ(lastRay.origin, lastRay.dir, planeY);
     if (hit) { rayNote = ''; return hit; }
     const w = v3.sub(camera.CENTER, lastRay.origin);
     const tt = Math.max(0.1, v3.dot(w, lastRay.dir));
@@ -320,10 +342,15 @@
     cv.addEventListener('pointercancel', () => { down = null; });
   }
 
-  // side feed: drag the plane
-  function setPlaneY(y, live) {
-    planeY = Math.max(PLANE_MIN, Math.min(PLANE_MAX, y));
-    $('plane-y').value = planeY.toFixed(2);
+  // side feed: drag the plane. The vertical slider's value is the pixel row
+  // of the plane line in the side view, so thumb and plane sit 1:1.
+  function syncPlaneSlider() {
+    const row = scene.planeScreenY(camSide, planeY);
+    if (row != null) $('plane-y').value = row.toFixed(1);
+  }
+  function setPlaneY(z, live) {
+    planeY = Math.max(PLANE_MIN, Math.min(PLANE_MAX, z));
+    syncPlaneSlider();
     section = workspace.gridSectionSegments(grid, planeY);
     if (lastRay && live) {
       target = targetFromRay();
@@ -357,8 +384,35 @@
     cv.addEventListener('pointerup', up);
     cv.addEventListener('pointercancel', up);
   }
-  $('plane-y').addEventListener('input', (ev) => setPlaneY(parseFloat(ev.target.value), true));
+  $('plane-y').addEventListener('input', (ev) => {
+    const z = scene.planeYFromPixel(camSide, W / 2, parseFloat(ev.target.value));
+    if (z != null) setPlaneY(z, true);
+  });
   $('plane-y').addEventListener('change', () => { if (target) startTrial(target); });
+
+  // flexibility: scales the mechanism's curvature limits; reach geometry and
+  // the planner follow; the controllers are unchanged
+  $('flex').addEventListener('input', (ev) => { $('flex-val').textContent = flexLabel(parseFloat(ev.target.value)); });
+  $('flex').addEventListener('change', (ev) => {
+    const f = parseFloat(ev.target.value);
+    $('demo-note').textContent = 'recomputing reach for flexibility ' + flexLabel(f) + ' ...';
+    setTimeout(() => {
+      applyFlex(f);
+      charts.addEvent(t, 'flex ×' + f.toFixed(1));
+      if (trial) abandonTrial();
+      if (target) for (const r of robotList) ctrlOf(r).newTarget(target);
+      $('demo-note').textContent = '';
+    }, 30);
+  });
+
+  // show / hide a robot's drawing (its simulation keeps running)
+  for (const g of document.querySelectorAll('.readouts .grp[data-robot]')) {
+    g.addEventListener('click', () => {
+      const k = g.dataset.robot;
+      visible[k] = !visible[k];
+      g.classList.toggle('off', !visible[k]);
+    });
+  }
 
   $('tgl-tendons').addEventListener('change', (ev) => { showTendons = ev.target.checked; });
 
@@ -419,15 +473,18 @@
     b: [0.45, 0.5, -0.7, 0.35],
     c: [1.6, 0.15, 0.2, -0.5],
     d: [0.8, -0.5, 0.9, 0.6],
-    // both segments curled the same way at the curvature limit: a workspace
-    // edge target the direct laws cannot reach from the rest pose
-    edge: [2.2 * Math.cos(0.2), 2.2 * Math.sin(0.2), 2.6 * Math.cos(0.2), 2.6 * Math.sin(0.2)],
+    // far lateral edge of the workspace above the table (segment 1 at 75% of
+    // its limit, segment 2 at 50%, same bending plane)
+    edge: [2.2 * 0.75 * Math.cos(4.2), 2.2 * 0.75 * Math.sin(4.2), 2.6 * 0.5 * Math.cos(4.2), 2.6 * 0.5 * Math.sin(4.2)],
   };
   const T3 = (q) => pcc.tip3(q);
-  // just past the straight arm's reach (tip at z = 1.8), visible in both views
-  const BEYOND = [0.1, -0.1, 2.35];
+  // just above the straight arm's reach (tip at z = 1.8), visible in both views
+  const BEYOND = [0.1, 0.0, 2.3];
   function setPreset(name) { const p = camera.PRESETS[name]; orbit.az = p.az; orbit.el = p.el; }
   function setPlan(on) { $('tgl-plan').checked = on; toggleChanged(); }
+  // demo targets: the plane moves to the target's height so plane, outline and
+  // target agree on screen
+  function demoTarget(p) { setPlaneY(p[2], false); startTrial(p); }
 
   function demoSteps() {
     const s = [];
@@ -436,25 +493,28 @@
     add(0, () => {
       $('tgl-payload').checked = false; $('tgl-drift').checked = false; $('tgl-plan').checked = false;
       payloadTarget = 0; driftOn = false; usePlan = false;
+      if (Math.abs(pcc.flex() - 1) > 1e-9) { $('flex').value = '1'; applyFlex(1); }
+      visible.classical = true; visible.learned = true;
+      for (const g of document.querySelectorAll('.readouts .grp[data-robot]')) g.classList.remove('off');
       setPreset('iso');
       resetAll();
     }, 'Nominal physics, planner OFF: the direct feedback laws, from the rest pose.');
-    add(0.8, () => startTrial(T3(TQ.edge)),
-      'A workspace-edge target with the direct laws. The classical law commits to the wrong bending plane and stalls short of it.');
-    add(6.6, () => { setPlan(true); }, 'Planner ON. Same target, same starting pose.');
-    add(0.4, () => startTrial(T3(TQ.edge)));
-    add(6.4, () => startTrial(T3(TQ.a)), 'Interior targets. The plan costs a little time here; the table keeps score.');
-    add(6.4, () => startTrial(T3(TQ.b)));
+    add(0.8, () => demoTarget(T3(TQ.edge)),
+      'A target at the far edge of the workspace, direct feedback laws only. The table below keeps score.');
+    add(6.6, () => { setPlan(true); }, 'Planner ON: inverse kinematics on the model first, then the same laws track the plan. Same target, same pose.');
+    add(0.4, () => demoTarget(T3(TQ.edge)));
+    add(6.4, () => demoTarget(T3(TQ.a)), 'Interior targets. The plan costs a little time here; the table keeps score.');
+    add(6.4, () => demoTarget(T3(TQ.b)));
     add(6.6, () => { $('tgl-payload').checked = true; toggleChanged(); setPreset('side'); },
-      'Payload on, seen from the side sensor. The ideal model does not know about sag.');
-    add(1.2, () => startTrial(T3(TQ.a)));
-    add(6.4, () => startTrial(T3(TQ.d)));
+      'Payload on, seen from the side sensor. An upright robot sags only when it leans; the ideal model does not know that either.');
+    add(1.2, () => demoTarget(T3(TQ.a)));
+    add(6.4, () => demoTarget(T3(TQ.d)));
     add(6.6, () => { $('tgl-drift').checked = true; toggleChanged(); },
       'Tendon drift on. A slow bias neither controller was told about.');
-    add(1.2, () => startTrial(T3(TQ.c)));
-    add(6.4, () => startTrial(T3(TQ.a)));
-    add(6.6, () => { setPreset('iso'); startTrial(BEYOND); },
-      'A target outside the reachable envelope. The plan stops at the closest reachable point; the ensemble flags what it was never shown.');
+    add(1.2, () => demoTarget(T3(TQ.c)));
+    add(6.4, () => demoTarget(T3(TQ.a)));
+    add(6.6, () => { setPreset('iso'); demoTarget(BEYOND); },
+      'A target above the reachable envelope. The plan stops at the closest reachable point; the ensemble flags what it was never shown.');
     add(7.5, () => {
       $('tgl-payload').checked = false; $('tgl-drift').checked = false;
       toggleChanged();
@@ -488,8 +548,10 @@
   window.CR_DEBUG = { reachCellsPx: () => { const cam = orbitCam(); return workspace.gridSliceCells(grid, planeY).map((p) => cam.project(p)).filter(Boolean).map((p) => [p[0], p[1]]); } };
 
   // ---- go ----
-  $('plane-y').min = PLANE_MIN; $('plane-y').max = PLANE_MAX; $('plane-y').step = 0.01;
-  $('plane-y').value = planeY.toFixed(2);
+  $('plane-y').min = 0; $('plane-y').max = H; $('plane-y').step = 0.5;
+  syncPlaneSlider();
+  $('flex').min = FLEX_RANGE[0]; $('flex').max = FLEX_RANGE[1]; $('flex').step = 0.1; $('flex').value = '1';
+  $('flex-val').textContent = flexLabel(1);
   resetAll();
   const hash = location.hash.slice(1).split(',');
   if (hash.includes('demo')) $('btn-demo').click();

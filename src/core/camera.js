@@ -9,8 +9,9 @@
   'use strict';
   const { v3, m3 } = CR;
 
-  // Workspace center every camera looks at, and the orbit radius.
-  const CENTER = [0.1, -0.1, 0.85];
+  // Workspace center every camera looks at (on the robot's axis), orbit radius.
+  // World frame: the robot stands on the origin with its axis along +z (up).
+  const CENTER = [0, 0, 0.85];
   const DIST = 3.2;
   const EL_SIDE = Math.asin(0.2 / DIST); // side sensor sits 0.2 above the center
 
@@ -57,25 +58,25 @@
     };
   }
 
-  // Orbit camera on a sphere around CENTER: azimuth about +y, elevation from
-  // the horizontal plane. The up vector is the sphere's tangent toward higher
-  // elevation, so it stays perpendicular to the view direction everywhere,
-  // including straight down (no gimbal degeneracy).
+  // Orbit camera on a sphere around CENTER: azimuth about the axis (+z),
+  // elevation from the horizontal plane. The up vector is the sphere's tangent
+  // toward higher elevation, so it stays perpendicular to the view direction
+  // everywhere, including straight down (no gimbal degeneracy).
   function orbitCamera(az, el, w, h, dist) {
     const d = dist || DIST;
     const ce = Math.cos(el), se = Math.sin(el);
-    const dir = [ce * Math.sin(az), se, ce * Math.cos(az)];
-    const up = [-se * Math.sin(az), ce, -se * Math.cos(az)];
+    const dir = [ce * Math.cos(az), ce * Math.sin(az), se];
+    const up = [-se * Math.cos(az), -se * Math.sin(az), ce];
     return makeCamera({ pos: v3.add(CENTER, v3.scale(dir, d)), target: CENTER, up, f: 0.78 * w, w, h });
   }
 
-  // The two sensors. Side: from +x, level with the workspace (image-right is
-  // -z, so the base sits on the right). Top: straight down (image-right -z,
-  // image-down +x, so the side sensor's side is at the bottom).
+  // The two sensors. Side: from +x, nearly level with the workspace centre
+  // (image-up is the axis, image-right is +y). Top: straight down the axis
+  // from above (image-right +y, image-down +x, the side sensor's side).
   const PRESETS = {
-    side: { az: Math.PI / 2, el: EL_SIDE },
-    top: { az: Math.PI / 2, el: Math.PI / 2 - 1e-3 },
-    iso: { az: 0.95, el: 0.52 },
+    side: { az: 0, el: EL_SIDE },
+    top: { az: 0, el: Math.PI / 2 - 1e-3 },
+    iso: { az: 0.6, el: 0.5 },
   };
   function sideCamera(w, h) { return orbitCamera(PRESETS.side.az, PRESETS.side.el, w, h); }
   function topCamera(w, h) { return orbitCamera(PRESETS.top.az, PRESETS.top.el, w, h); }
@@ -111,15 +112,16 @@
     return out;
   }
 
-  // Ray-plane intersection with the horizontal plane y = h. Returns the point,
-  // or null when the ray is within ~3 degrees of parallel to the plane.
-  function rayPlaneY(origin, dir, h) {
-    if (Math.abs(dir[1]) < 0.05) return null;
-    const t = (h - origin[1]) / dir[1];
+  // Ray-plane intersection with the height plane z = h (horizontal, since the
+  // axis is up). Returns the point, or null when the ray is within ~3 degrees
+  // of parallel to the plane.
+  function rayPlaneZ(origin, dir, h) {
+    if (Math.abs(dir[2]) < 0.05) return null;
+    const t = (h - origin[2]) / dir[2];
     if (t <= 0) return null;
     return v3.add(origin, v3.scale(dir, t));
   }
 
   CR.camera = { CENTER, DIST, PRESETS, makeCamera, orbitCamera, sideCamera, topCamera,
-    triangulate, senseMarkers, rayPlaneY };
+    triangulate, senseMarkers, rayPlaneZ };
 })(typeof globalThis.CR === 'object' ? globalThis.CR : (globalThis.CR = {}));

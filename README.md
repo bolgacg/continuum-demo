@@ -46,17 +46,24 @@ about it followed from that:
    committed to the wrong plane, hit the curvature limit and stalled. In 2D that
    reads as random; in 3D it is a hidden degree of freedom.
 
-Version 3 senses with two fixed calibrated cameras (side and top), triangulates
-the four markers, and gives both controllers the same 3D estimate and a 3D
-target. A click in the orbiting inspector gives a ray; the height plane in the
+Version 3 stands the robot upright on a table plate, axis up and gravity along
+the axis (a straight upright robot does not sag; a leaning one sags in
+proportion to its lean and the payload), senses with two fixed calibrated
+cameras (side and top), triangulates the four markers, and gives both
+controllers the same 3D estimate and a 3D target. A click in the orbiting inspector gives a ray; the height plane in the
 side sensor view turns the ray back into a point, and the outline drawn at the
 plane's height is the reachable set's cross-section there (from a sampled
 occupancy grid, holes included: near the base the reachable set is a ring, not a
 disc). The inspector has side, top and isometric presets, the tube a constant
 radius, the markers two classes (filled at segment ends, hollow at midpoints),
-and a Tendons switch that strips the tube and draws the three tendons per
-segment, brighter and thicker the harder they are pulled (radius drawn at 2.5x
-for legibility, stated on screen). Two further changes and a fix:
+a Tendons switch that strips the tube and draws the three tendons per segment
+(radius drawn at 2.5x for legibility, stated on screen; colour from white when
+slack to the robot's colour when fully shortened), a Flexibility slider that
+scales the mechanism's curvature limits from x0.7 to x1.8 with the planner,
+envelope and outline following (the crescent-shaped reach is the mechanism, not
+the controller; the ensemble is trained across the whole range), a click on
+either robot's name to hide or show it, and a vertical slider beside the side
+view that sits 1:1 with the height plane. Two further changes and a fix:
 
 4. **The boundary.** Version 1 drew the convex hull of the training targets in the
    image and called it close to the reachable set; it was not (about 35 px short
@@ -87,10 +94,11 @@ for legibility, stated on screen). Two further changes and a fix:
 ## How it works
 
 **Simulator.** The idealized model is piecewise constant curvature (PCC), two
-bending segments, each actuated by a triplet of tendons. The "truth" simulator is
-PCC plus the effects the idealized model ignores: actuator lag and rate limits,
-tendon backlash, gravity droop that grows with payload, inter-segment coupling,
-and optional slow tendon drift. It is phenomenological on purpose; it is not rod
+bending segments, each actuated by a triplet of tendons, standing upright with
+gravity along the axis. The "truth" simulator is PCC plus the effects the
+idealized model ignores: actuator lag and rate limits, tendon backlash, gravity
+droop proportional to each segment's lean and to the payload, inter-segment
+coupling, and optional slow tendon drift. It is phenomenological on purpose; it is not rod
 mechanics, and its curvature is biased by load rather than redistributed along
 the arc, so the model mismatch is milder than a real robot's.
 
@@ -106,20 +114,22 @@ respect to curvature, and do damped least squares descent on the 3D tip error.
 Honestly implemented and honestly degraded: under payload its Jacobian points the
 wrong way during transients, and backlash plus drift leave it hunting.
 
-**Learned controller.** Five small MLPs (15 inputs, two hidden layers, 12 outputs)
+**Learned controller.** Five small MLPs (15 inputs, two hidden layers, 12 outputs; see `train/train.js` for the current sizes)
 each regress a 4x3 feedback gain matrix G from the triangulated markers and the
 error; the command is v = G e. Structuring the output as a gain matrix means
 commands vanish exactly at zero error. Training labels come from a privileged
 expert, damped least squares on the truth simulator's own Jacobian, which exists
-only at training time. Data: 300 episodes with randomized payload, drift, poses
-and 3D targets, exploration noise on the applied actions, 46,800 samples. Training
-runs offline in Node (`train/train.js`, plain JavaScript, no frameworks) and the
-weights ship embedded in the page.
+only at training time. Data: episodes with randomized flexibility (x0.7 to
+x1.8), payload, drift, poses and 3D targets, exploration noise on the applied
+actions. Training runs offline in Node (`train/train.js`, plain JavaScript, no
+frameworks) and the weights ship embedded in the page.
 
 **Uncertainty.** Three signals. The target is tested against the population the
-training targets were drawn from (tips at up to 90% of the curvature limits) by
-running the planner's inverse kinematics with the limits scaled to 90%: if no
-such configuration reaches it, the ensemble was never shown it. The feature
+training targets were drawn from (tips at up to 90% of the curvature limits at
+the highest flexibility trained, x1.8) by running the planner's inverse
+kinematics with those limits: if no such configuration reaches it, the ensemble
+was never shown it. That population is the faint blue cage on the page; the grey
+cage is the current mechanism's reach. The feature
 vector is checked by nearest-neighbour distance against a stored training
 subsample, threshold at the holdout 99.5th percentile. And the five networks'
 command spread is monitored (same percentile rule). Any of the three flags the
@@ -143,54 +153,53 @@ lengths are shown as if the robot were 180 mm long (1 unit = 100 mm). Edge
 targets are tips at 95 to 100% of the curvature limit; interior targets up to
 85%. `node train/eval.js` reproduces both tables.
 
+Targets are restricted to above the table the upright robot stands on (z of
+at least 5 mm).
+
 ### Interior targets
 
 | condition | controller | direct settled | direct median settle | direct steady-state | planned settled | planned median settle | planned steady-state |
 |---|---|---|---|---|---|---|---|
-| nominal | classical | 36/40 | 1.48 s | 2.9 mm | 39/40 | 1.85 s | 0.5 mm |
-| nominal | learned | 40/40 | 2.00 s | 0.9 mm | 40/40 | 1.83 s | 0.7 mm |
-| payload | classical | 35/40 | 1.97 s | 5.3 mm | 38/40 | 2.15 s | 1.9 mm |
-| payload | learned | 36/40 | 1.88 s | 4.6 mm | 39/40 | 1.80 s | 1.5 mm |
-| drift | classical | 34/40 | 2.02 s | 5.2 mm | 39/40 | 2.10 s | 3.3 mm |
-| drift | learned | 36/40 | 2.43 s | 3.3 mm | 39/40 | 2.13 s | 3.1 mm |
-| payload + drift | classical | 31/40 | 2.43 s | 6.5 mm | 38/40 | 2.77 s | 3.5 mm |
-| payload + drift | learned | 34/40 | 2.47 s | 4.0 mm | 38/40 | 2.12 s | 3.1 mm |
-
-The ensemble flagged nothing on interior targets.
+| nominal | classical | 36/40 | 1.48 s | 2.7 mm | 40/40 | 1.83 s | 0.5 mm |
+| nominal | learned | 35/40 | 2.15 s | 2.1 mm | 40/40 | 1.93 s | 0.7 mm |
+| payload | classical | 34/40 | 1.43 s | 2.9 mm | 39/40 | 1.73 s | 0.9 mm |
+| payload | learned | 34/40 | 2.32 s | 2.8 mm | 39/40 | 1.80 s | 1.0 mm |
+| drift | classical | 34/40 | 2.00 s | 5.1 mm | 39/40 | 2.13 s | 3.4 mm |
+| drift | learned | 30/40 | 2.53 s | 4.4 mm | 37/40 | 2.45 s | 3.3 mm |
+| payload + drift | classical | 28/40 | 2.78 s | 5.5 mm | 34/40 | 2.87 s | 4.1 mm |
+| payload + drift | learned | 23/40 | 2.87 s | 5.2 mm | 28/40 | 2.77 s | 4.0 mm |
 
 ### Edge targets
 
 | condition | controller | direct settled | direct median settle | direct steady-state | planned settled | planned median settle | planned steady-state |
 |---|---|---|---|---|---|---|---|
-| nominal | classical | 23/40 | 1.50 s | 24.8 mm | 40/40 | 2.00 s | 0.4 mm |
-| nominal | learned | 22/40 | 1.73 s | 9.3 mm | 35/40 | 1.88 s | 1.6 mm |
-| payload | classical | 22/40 | 2.20 s | 28.2 mm | 35/40 | 2.02 s | 2.2 mm |
-| payload | learned | 16/40 | 2.10 s | 15.6 mm | 30/40 | 1.97 s | 3.0 mm |
-| drift | classical | 18/40 | 1.58 s | 27.6 mm | 37/40 | 2.10 s | 3.2 mm |
-| drift | learned | 21/40 | 2.33 s | 14.0 mm | 36/40 | 2.28 s | 3.3 mm |
-| payload + drift | classical | 21/40 | 2.47 s | 28.8 mm | 35/40 | 2.12 s | 3.7 mm |
-| payload + drift | learned | 16/40 | 2.37 s | 16.0 mm | 32/40 | 2.43 s | 4.1 mm |
+| nominal | classical | 28/40 | 1.45 s | 12.2 mm | 40/40 | 2.02 s | 0.4 mm |
+| nominal | learned | 32/40 | 1.97 s | 2.8 mm | 40/40 | 2.05 s | 0.5 mm |
+| payload | classical | 27/40 | 1.58 s | 12.8 mm | 40/40 | 2.18 s | 0.9 mm |
+| payload | learned | 35/40 | 1.72 s | 2.3 mm | 40/40 | 2.03 s | 0.6 mm |
+| drift | classical | 25/40 | 2.30 s | 15.2 mm | 40/40 | 2.28 s | 2.5 mm |
+| drift | learned | 32/40 | 2.67 s | 5.8 mm | 39/40 | 2.28 s | 2.6 mm |
+| payload + drift | classical | 25/40 | 2.70 s | 15.0 mm | 38/40 | 3.05 s | 3.1 mm |
+| payload + drift | learned | 32/40 | 2.78 s | 4.7 mm | 37/40 | 2.35 s | 3.0 mm |
 
-The ensemble flagged about 30% of edge-target steps (the targets outside its
-90%-of-limits training population) and ran at 0.3x authority there.
+The ensemble flagged nothing in these conditions: every target lies inside the
+population it was trained on (tips at up to 90% of the limits, flexibility up
+to x1.8).
 
-What the tables say. The direct classical law loses about half of the edge
-targets and stalls tens of millimetres short (the wrong bending plane, at the
-curvature limit); the plan takes it to 40 of 40 in the nominal case and lifts it
-under every disturbance. The learned law flags the edge targets outside its
-training population and slows down by design, which costs it settle rate there
-(22 of 40 direct, 35 of 40 planned); when it does settle its steady state is
-small. Interior targets are the everyday case: nothing flagged, the plan costs
-the classical controller about 0.4 s, the learned controller is marginally
-faster with it. Under payload and drift the plan is the ideal model's plan and
-the feedback term carries the difference; the gains shrink but do not vanish. A
-null-space term (curvature minimization, or a pull toward a good configuration)
-was tried before the planner and moved the numbers only slightly, because the
-failure is a basin, not a redundancy resolution. Earlier in this build, before
-the explicit target test was restored, the learned law reached 34 of 40 edge
-targets directly at full authority; the warning is what costs it, and it is kept
-because a controller that does not know it is extrapolating is the worse
-failure.
+What the tables say. Above the table, the direct classical law loses 12 of 40
+edge targets and stalls about 12 mm short, committed to a bending plane from
+which the target is not reachable within the limits; the direct learned law
+loses 8. The plan takes both to 40 of 40 and keeps that advantage under payload
+and drift, at a cost of about 0.3 s on interior targets. The curled-back region
+below the base, where the horizontal-frame builds had found the direct laws
+stalling more than 100 mm short, is behind the table now and out of the
+evaluation. The ensemble trained across the whole flexibility range is on par
+with the classical law under payload and somewhat behind it under drift, where
+the single-mechanism ensemble of the previous build had been ahead: the price
+of generality at this network size, reported rather than hidden. A null-space
+term (curvature minimization, or a pull toward a good configuration) was tried
+before the planner and moved the numbers only slightly, because the failure is a
+basin, not a redundancy resolution.
 
 ## What this does not claim
 
