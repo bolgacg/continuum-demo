@@ -116,7 +116,7 @@
       ctx.fillStyle = HUD;
       const txt = 'target plane  z = ' + (h * 100).toFixed(0) + ' mm';
       const tw = ctx.measureText(txt).width;
-      const right = Math.min(hpx[0] - 12, cam.w - 14);
+      const right = Math.min(hpx[0] - 12, cam.w - 26); // clear of the slider overlay
       ctx.fillText(txt, Math.max(14, right - tw), hpx[1] + 4);
     }
   }

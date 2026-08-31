@@ -55,7 +55,7 @@
     section = workspace.gridSectionSegments(grid, planeY);
     scene.invalidateLayers();
   }
-  const flexLabel = (f) => '×' + f.toFixed(1) + ' · max bend ' + Math.round((pcc.KMAX_BASE[0] * f * pcc.SEG_LEN[0] * 180) / Math.PI) + '° / ' + Math.round((pcc.KMAX_BASE[1] * f * pcc.SEG_LEN[1] * 180) / Math.PI) + '°';
+  const flexLabel = (f) => '×' + f.toFixed(1) + ' · ' + Math.round((pcc.KMAX_BASE[0] * f * pcc.SEG_LEN[0] * 180) / Math.PI) + '°/' + Math.round((pcc.KMAX_BASE[1] * f * pcc.SEG_LEN[1] * 180) / Math.PI) + '°';
 
   const robots = {
     classical: {
@@ -269,6 +269,10 @@
       }
       $('plane-y-val').textContent = 'target plane z = ' + (planeY * MM).toFixed(0) + ' mm';
       $('flex-val').textContent = flexLabel(pcc.flex());
+      for (const b of document.querySelectorAll('.chip[data-preset]')) {
+        const p = camera.PRESETS[b.dataset.preset];
+        b.classList.toggle('active', Math.abs(orbit.az - p.az) < 1e-6 && Math.abs(orbit.el - p.el) < 1e-6);
+      }
     }
     frames++;
     const now = performance.now();
@@ -344,16 +348,25 @@
 
   // side feed: drag the plane. The vertical slider's value is the pixel row
   // of the plane line in the side view, so thumb and plane sit 1:1.
+  // The slider's thumb travel is its length minus the thumb, so map canvas
+  // rows to slider values with that compensation; thumb centre then sits on
+  // the plane line exactly.
+  const THUMB = 14;
+  function sliderHcss() { const r = views.side.canvas.getBoundingClientRect(); return r.height || H; }
   function syncPlaneSlider() {
     const row = scene.planeScreenY(camSide, planeY);
-    if (row != null) $('plane-y').value = row.toFixed(1);
+    if (row == null) return;
+    const Hc = sliderHcss();
+    const v = ((row * Hc / H) - THUMB / 2) / (Hc - THUMB) * H;
+    $('plane-y').value = Math.max(0, Math.min(H, v)).toFixed(1);
   }
   function setPlaneY(z, live) {
     planeY = Math.max(PLANE_MIN, Math.min(PLANE_MAX, z));
     syncPlaneSlider();
     section = workspace.gridSectionSegments(grid, planeY);
-    if (lastRay && live) {
-      target = targetFromRay();
+    if (live && target) {
+      // the target keeps its x and y; only its height follows the plane
+      target = [target[0], target[1], planeY];
       if (trial) abandonTrial();
     }
   }
@@ -385,7 +398,9 @@
     cv.addEventListener('pointercancel', up);
   }
   $('plane-y').addEventListener('input', (ev) => {
-    const z = scene.planeYFromPixel(camSide, W / 2, parseFloat(ev.target.value));
+    const Hc = sliderHcss();
+    const rowCss = THUMB / 2 + (parseFloat(ev.target.value) / H) * (Hc - THUMB);
+    const z = scene.planeYFromPixel(camSide, W / 2, rowCss * H / Hc);
     if (z != null) setPlaneY(z, true);
   });
   $('plane-y').addEventListener('change', () => { if (target) startTrial(target); });
@@ -546,7 +561,7 @@
   });
 
   // dev hook: projected reach section in the inspector, for tests
-  window.CR_DEBUG = { reachCellsPx: () => { const cam = orbitCam(); return workspace.gridSliceCells(grid, planeY).map((p) => cam.project(p)).filter(Boolean).map((p) => [p[0], p[1]]); } };
+  window.CR_DEBUG = { target: () => (target ? target.slice() : null), reachCellsPx: () => { const cam = orbitCam(); return workspace.gridSliceCells(grid, planeY).map((p) => cam.project(p)).filter(Boolean).map((p) => [p[0], p[1]]); } };
 
   // ---- go ----
   $('plane-y').min = 0; $('plane-y').max = H; $('plane-y').step = 0.5;

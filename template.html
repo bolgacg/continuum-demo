@@ -32,48 +32,53 @@
   h2 { font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); margin: 36px 0 12px; display: flex; align-items: center; gap: 12px; }
   h2::after { content: ""; flex: 1; height: 1px; background: var(--hairline); }
 
-  .feeds { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px; }
+  /* camera feeds */
+  .feeds { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 22px; }
   .feed-card { min-width: 0; }
-  .feed-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; height: 22px; white-space: nowrap; overflow: hidden; }
-  .feed-head .feed-sub { overflow: hidden; text-overflow: ellipsis; }
-  .feed-title { font-weight: 600; font-size: 14.5px; }
-  .feed-sub { color: var(--muted); font-size: 12.5px; }
+  .feed-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 6px; height: 20px; white-space: nowrap; overflow: hidden; }
+  .feed-title { font-weight: 650; font-size: 14px; letter-spacing: -0.01em; }
+  .feed-sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
   .feed-frame { position: relative; border-radius: 10px; overflow: hidden; background: var(--feed); border: 1px solid var(--border); }
-  .feed-row { display: flex; align-items: stretch; gap: 8px; }
-  .feed-row .feed-frame { flex: 1; min-width: 0; }
-  .vslider-wrap { position: relative; width: 22px; flex: none; }
-  .vslider-wrap input[type=range] { position: absolute; left: 0; top: -7px; height: calc(100% + 14px); width: 22px; margin: 0; writing-mode: vertical-lr; accent-color: var(--ink-2); }
-  .readouts .grp[data-robot] { cursor: pointer; user-select: none; }
-  .readouts .grp.off { opacity: 0.38; }
-  .readouts .grp.off .name::after { content: " (hidden)"; font-weight: 400; color: var(--muted); }
-  .flexctl { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; }
-  .flexctl input[type=range] { width: 110px; accent-color: var(--ink-2); }
-  .flexctl .val { font-family: var(--mono); font-size: 12px; color: var(--ink-2); min-width: 190px; }
   .feed-frame canvas { display: block; width: 100%; height: auto; cursor: crosshair; touch-action: none; }
-  .feed-tools { display: flex; align-items: center; gap: 10px; padding: 8px 2px 0; font-size: 12.5px; color: var(--ink-2); flex-wrap: wrap; }
-  .feed-tools .grow { flex: 1; min-width: 120px; }
-  .feed-tools input[type=range] { width: 100%; accent-color: var(--ink-2); }
-  .feed-tools .val { font-family: var(--mono); color: var(--ink); min-width: 62px; text-align: right; }
-  .preset { font: 600 12px/1 system-ui, sans-serif; color: var(--ink-2); background: var(--surface); border: 1px solid var(--hairline); border-radius: 6px; padding: 6px 9px; cursor: pointer; }
-  .preset:hover { background: #f0efec; color: var(--ink); }
+  .hud-chips { position: absolute; top: 34px; right: 10px; display: flex; flex-direction: column; gap: 5px; z-index: 2; }
+  .chip { font: 600 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: #b9bdb6; background: rgba(21,22,20,0.72); border: 1px solid rgba(138,143,136,0.4); border-radius: 5px; padding: 5px 8px; cursor: pointer; }
+  .chip:hover { color: #e8eae6; border-color: rgba(232,234,230,0.6); }
+  .chip.active { color: #151614; background: #c9ccc6; border-color: #c9ccc6; }
+  .vslider { position: absolute; top: 0; bottom: 0; right: 3px; width: 18px; height: 100%; margin: 0; writing-mode: vertical-lr; accent-color: #b9bdb6; z-index: 2; }
+  .feed-cap { display: flex; justify-content: space-between; gap: 12px; padding: 6px 2px 0; font-family: var(--mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+  .feed-cap .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .feed-cap #plane-y-val { color: var(--ink-2); flex: none; }
 
-  .readouts { display: flex; gap: 28px; padding: 14px 2px 0; font-family: var(--mono); font-size: 12px; color: var(--ink-2); flex-wrap: wrap; }
-  .readouts .grp { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
-  .readouts .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 2px; }
-  .readouts .name { font: 600 13px system-ui, sans-serif; color: var(--ink); }
-  .readouts .val { color: var(--ink); }
-  .readouts .lbl { color: var(--muted); }
+  /* robot readouts */
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 14px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 9px 14px 10px; cursor: pointer; user-select: none; font-family: var(--mono); font-size: 12px; color: var(--ink-2); min-width: 0; }
+  .stat .toprow { display: flex; align-items: center; gap: 9px; margin-bottom: 7px; white-space: nowrap; }
+  .stat .dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .stat .name { font: 650 13px/1.2 system-ui, sans-serif; color: var(--ink); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .stat .state { color: var(--ink); }
+  .stat .metrics { display: flex; gap: 18px; white-space: nowrap; }
+  .stat .lbl { color: var(--muted); }
+  .stat .val { color: var(--ink); font-variant-numeric: tabular-nums; display: inline-block; min-width: 52px; }
+  .stat.off { opacity: 0.4; }
+  .stat.off .name::after { content: " · hidden"; color: var(--muted); font-weight: 400; }
 
-  .controls { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; margin-top: 20px; }
-  .hint { color: var(--ink-2); font-size: 13.5px; margin-right: auto; }
-  .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: 13.5px; }
+  /* toolbar */
+  .toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; margin-top: 16px; }
+  .tgroup { display: flex; align-items: center; gap: 16px; padding: 0 18px; border-left: 1px solid var(--hairline); }
+  .tgroup:first-child { border-left: 0; padding-left: 0; }
+  .tgroup.last { margin-left: auto; border-left: 0; padding-right: 0; }
+  .toolbar label[for] { font-size: 13px; color: var(--ink-2); }
+  .toolbar input[type=range] { width: 110px; accent-color: var(--ink-2); }
+  .tval { font-family: var(--mono); font-size: 12px; color: var(--ink-2); min-width: 84px; font-variant-numeric: tabular-nums; }
+  .caption { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
+  .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: 13px; white-space: nowrap; }
   .switch input { position: absolute; opacity: 0; pointer-events: none; }
   .knob { width: 34px; height: 20px; border-radius: 10px; background: var(--hairline); position: relative; transition: background 0.15s; flex: none; }
   .knob::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.25); transition: left 0.15s; }
   .switch input:checked + .knob { background: var(--ink-2); }
   .switch input:checked + .knob::after { left: 17px; }
   .switch input:focus-visible + .knob { outline: 2px solid var(--learned); outline-offset: 2px; }
-  button { font: 600 13.5px/1 system-ui, sans-serif; color: var(--ink); background: var(--surface); border: 1px solid var(--ink-2); border-radius: 8px; padding: 9px 14px; cursor: pointer; }
+  button { font: 600 13px/1 system-ui, sans-serif; color: var(--ink); background: var(--surface); border: 1px solid var(--ink-2); border-radius: 8px; padding: 9px 14px; cursor: pointer; white-space: nowrap; }
   button:hover { background: #f0efec; }
   button:focus-visible { outline: 2px solid var(--learned); outline-offset: 2px; }
   button.primary { background: var(--ink); color: #fff; border-color: var(--ink); }
@@ -111,8 +116,10 @@
   .v1-note { max-width: 800px; color: var(--ink-2); font-size: 14px; margin-bottom: 14px; }
   .v1-frame { width: 100%; height: 1720px; border: 1px solid var(--border); border-radius: 10px; background: var(--page); }
   footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--hairline); color: var(--muted); font-size: 12.5px; display: flex; gap: 16px; flex-wrap: wrap; }
-  @media (max-width: 780px) {
-    .feeds { grid-template-columns: 1fr; }
+  @media (max-width: 860px) {
+    .feeds, .stats { grid-template-columns: 1fr; }
+    .tgroup { padding: 0 12px; }
+    .tgroup.last { margin-left: 0; }
     .legend { position: static; margin-bottom: 8px; }
     .v1-frame { height: 2400px; }
   }
@@ -147,60 +154,61 @@
 
   <div class="feeds">
     <div class="feed-card">
-      <div class="feed-head">
-        <span class="feed-title">Inspector</span>
-        <span class="feed-sub">drag to orbit · click inside the outline to aim · robot stands on its base</span>
+      <div class="feed-head"><span class="feed-title">Inspector</span><span class="feed-sub">orbit view</span></div>
+      <div class="feed-frame">
+        <canvas id="view-inspector" width="460" height="345"></canvas>
+        <div class="hud-chips">
+          <button class="chip" data-preset="iso">Iso</button>
+          <button class="chip" data-preset="side">Side</button>
+          <button class="chip" data-preset="top">Top</button>
+        </div>
       </div>
-      <div class="feed-frame"><canvas id="view-inspector" width="460" height="345"></canvas></div>
-      <div class="feed-tools">
-        <span>View</span>
-        <button class="preset" data-preset="iso">Isometric</button>
-        <button class="preset" data-preset="side">Side (CAM 01)</button>
-        <button class="preset" data-preset="top">Top (CAM 02)</button>
-      </div>
+      <div class="feed-cap"><span class="grow">drag to orbit · click inside the outline to aim</span></div>
     </div>
     <div class="feed-card">
-      <div class="feed-head">
-        <span class="feed-title">CAM 01 · side sensor</span>
-        <span class="feed-sub">what the controllers see · drag the plane</span>
+      <div class="feed-head"><span class="feed-title">CAM 01 · side sensor</span><span class="feed-sub">what the controllers see</span></div>
+      <div class="feed-frame">
+        <canvas id="view-side" width="460" height="345"></canvas>
+        <input type="range" id="plane-y" class="vslider" min="0" max="345" step="0.5" value="172" aria-label="target plane height">
       </div>
-      <div class="feed-row">
-        <div class="feed-frame"><canvas id="view-side" width="460" height="345"></canvas></div>
-        <div class="vslider-wrap"><input type="range" id="plane-y" min="0" max="345" step="0.5" value="172" aria-label="target plane height"></div>
+      <div class="feed-cap"><span class="grow">drag the plane or the slider</span><span id="plane-y-val">target plane z = 120 mm</span></div>
+    </div>
+  </div>
+
+  <div class="readouts stats">
+    <div class="grp stat" data-robot="classical" title="click to hide or show this robot">
+      <div class="toprow"><span class="dot" style="background:var(--classical)"></span><span class="name">Classical</span><span class="state" id="ro-c-state">idle</span></div>
+      <div class="metrics">
+        <span><span class="lbl">error</span> <span class="val" id="ro-c-err">–</span></span>
+        <span><span class="lbl">settle</span> <span class="val" id="ro-c-settle">–</span></span>
       </div>
-      <div class="feed-tools">
-        <span class="val" id="plane-y-val" style="min-width:0;text-align:left">target plane z = 120 mm</span>
-        <span style="color:var(--muted)">slider and plane line sit at the same height</span>
+    </div>
+    <div class="grp stat" data-robot="learned" title="click to hide or show this robot">
+      <div class="toprow"><span class="dot" style="background:var(--learned)"></span><span class="name">Learned ensemble</span><span class="state" id="ro-l-state">idle</span></div>
+      <div class="metrics">
+        <span><span class="lbl">error</span> <span class="val" id="ro-l-err">–</span></span>
+        <span><span class="lbl">settle</span> <span class="val" id="ro-l-settle">–</span></span>
+        <span><span class="lbl">σ</span> <span class="val" id="ro-l-sigma">–</span></span>
       </div>
     </div>
   </div>
 
-  <div class="readouts">
-    <span class="grp" data-robot="classical" title="click to hide or show this robot">
-      <span class="dot" style="background:var(--classical)"></span><span class="name">Classical</span>
-      <span><span class="lbl">error</span> <span class="val" id="ro-c-err">–</span></span>
-      <span><span class="lbl">settle</span> <span class="val" id="ro-c-settle">–</span></span>
-      <span><span class="lbl">state</span> <span class="val" id="ro-c-state">idle</span></span>
+  <div class="toolbar">
+    <span class="tgroup">
+      <label for="flex">Flexibility</label><input type="range" id="flex" min="0.7" max="1.8" step="0.1" value="1"><span class="tval" id="flex-val">×1.0</span>
     </span>
-    <span class="grp" data-robot="learned" title="click to hide or show this robot">
-      <span class="dot" style="background:var(--learned)"></span><span class="name">Learned ensemble</span>
-      <span><span class="lbl">error</span> <span class="val" id="ro-l-err">–</span></span>
-      <span><span class="lbl">settle</span> <span class="val" id="ro-l-settle">–</span></span>
-      <span><span class="lbl">ensemble σ</span> <span class="val" id="ro-l-sigma">–</span></span>
-      <span><span class="lbl">state</span> <span class="val" id="ro-l-state">idle</span></span>
+    <span class="tgroup">
+      <label class="switch"><input type="checkbox" id="tgl-tendons"><span class="knob"></span>Tendons</label>
+      <label class="switch"><input type="checkbox" id="tgl-plan" checked><span class="knob"></span>Plan first</label>
+      <label class="switch"><input type="checkbox" id="tgl-payload"><span class="knob"></span>Payload</label>
+      <label class="switch"><input type="checkbox" id="tgl-drift"><span class="knob"></span>Tendon drift</label>
+    </span>
+    <span class="tgroup last">
+      <button id="btn-reset">Reset</button>
+      <button id="btn-demo" class="primary">Run scripted demo</button>
     </span>
   </div>
-
-  <div class="controls">
-    <span class="hint">Both robots share the target, the disturbances and the planner. Click a robot's name to hide or show it.</span>
-    <span class="flexctl"><label for="flex">Flexibility</label><input type="range" id="flex" min="0.7" max="1.8" step="0.1" value="1"><span class="val" id="flex-val">×1.0</span></span>
-    <label class="switch"><input type="checkbox" id="tgl-tendons"><span class="knob"></span>Tendons</label>
-    <label class="switch"><input type="checkbox" id="tgl-plan" checked><span class="knob"></span>Plan first</label>
-    <label class="switch"><input type="checkbox" id="tgl-payload"><span class="knob"></span>Payload</label>
-    <label class="switch"><input type="checkbox" id="tgl-drift"><span class="knob"></span>Tendon drift</label>
-    <button id="btn-reset">Reset</button>
-    <button id="btn-demo" class="primary">Run scripted demo</button>
-  </div>
+  <p class="caption">Both robots share the target, the disturbances and the planner. Click a robot's card to hide or show it.</p>
   <div class="demo-note" id="demo-note"></div>
 
   <h2>Validation</h2>
@@ -253,7 +261,7 @@
   <div class="change">
     <h3>2. What version 3 changes for that</h3>
     <p><b>Sensing and task.</b> Two fixed, calibrated cameras (CAM 01 side, CAM 02 top) see the four markers; each marker is triangulated and both controllers get the same 3D estimate and a 3D target with a 3D error. The cameras add no noise, so the triangulation is exact; the page does not pretend otherwise.</p>
-    <p><b>Placing a target.</b> A click in the inspector still gives a ray. The height plane, set with the vertical slider beside the side sensor view (thumb and plane line sit at the same height) or by dragging the plane itself, turns the ray back into a point; move the plane and the target slides along the same ray. The outline drawn at the plane's height is the reachable set's cross-section there, from a sampled occupancy grid: near the base it is a ring, because a robot of fixed length cannot bring its tip next to its own base. Click inside it and the target is reachable; outside it the trial is marked beyond reach, the plan stops at the closest reachable point, and the ensemble flags a target it was never shown.</p>
+    <p><b>Placing a target.</b> A click in the inspector still gives a ray. The height plane, set with the vertical slider on the side sensor view (thumb and plane line sit at the same height) or by dragging the plane itself, turns the ray back into a point; move the plane afterwards and the target keeps its x and y, only its height follows. The outline drawn at the plane's height is the reachable set's cross-section there, from a sampled occupancy grid: near the base it is a ring, because a robot of fixed length cannot bring its tip next to its own base. Click inside it and the target is reachable; outside it the trial is marked beyond reach, the plan stops at the closest reachable point, and the ensemble flags a target it was never shown.</p>
     <p><b>Flexibility.</b> The crescent is the mechanism, not the controller: what the tip can reach is set by the segment lengths and the curvature limits, and no amount of training moves it. The Flexibility slider scales the curvature limits (×1.0 is the original 126° and 119° per segment; ×1.8 is about 227° and 214°), and the planner, the envelope and the outline follow. The ensemble was trained across the whole range, so its warning refers to targets outside what the most flexible setting was ever asked to reach.</p>
     <p><b>Orientation.</b> The robot stands on its base with the axis up and gravity along the axis; nothing blocks the space under the base, and the height plane covers the whole reach. An upright straight robot does not sag; the further a segment leans, the larger the component of gravity across it, and the simulator's droop grows with that lean and with the payload. Version 1's horizontal cantilever sagged everywhere; this is the more honest picture for a bench-mounted robot, and the one the ensemble is now trained on.</p>
     <p><b>Views.</b> The inspector orbits the workspace (drag), with side, top and isometric presets; the side and top presets are the sensors' own poses, so what the controllers see can be compared with any other angle. The tube is drawn with one constant radius. Segment ends are filled markers, midpoints hollow rings: two segments, one midpoint each.</p>
