@@ -7,8 +7,8 @@ runs against a small learned ensemble that was trained on the simulator's less
 polite physics and reports its own uncertainty. Both sit under the same
 plan-then-track layer, which can be switched off.
 
-I built the first version over a weekend as a study of the problems in the SDU
-Robotics job ad on sensing and AI-based control of continuum surgical robots. It
+I built the first version over a weekend as a study of sensing and AI-based
+control of continuum surgical robots. It
 is a toy, and the gap between the idealized model and the simulated truth is the
 point.
 
@@ -203,7 +203,7 @@ not a redundancy resolution.
 
 ## What this does not claim
 
-- It is a simulation. No hardware, no clinical anything. The job ad is about
+- It is a simulation. No hardware, no clinical anything. The subject is
   surgical robots; this page makes no claim beyond that sentence.
 - The truth model is invented, not identified from a physical robot, and it stays
   in the constant-curvature shape family.
