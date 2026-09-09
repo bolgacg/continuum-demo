@@ -287,7 +287,10 @@
     of the main reasons tendon-driven surgical robots need compensation methods at all, and
     so far this page only displayed it. This section measures it from the outside and then
     cancels it, under the same rule as everything else here: the estimator and the
-    compensator see what the controllers see, never the simulator's state.</p>
+    compensator see what the controllers see, never the simulator's state. The act runs on
+    this version's full stack, both calibrated cameras, triangulated markers, the planner
+    and the classical law on the 3D task; the window below shows one sensor at a time, and
+    the CAM chips flip between them.</p>
     <p>The measurement is a slow triangular sweep on one curvature channel while the two
     fixed cameras watch the triangulated tip. After each command reversal the tip keeps
     creeping the old way; the commanded distance covered before it turns around is the dead
@@ -305,8 +308,14 @@
 
   <div class="feeds">
     <div class="feed-card">
-      <div class="feed-head"><span class="feed-title">Side sensor</span><span class="feed-sub">the tracking loop this section runs</span></div>
-      <div class="feed-frame"><canvas id="hy-view" width="460" height="345"></canvas></div>
+      <div class="feed-head"><span class="feed-title">Sensor view</span><span class="feed-sub">the tracking loop this section runs</span></div>
+      <div class="feed-frame">
+        <canvas id="hy-view" width="460" height="345"></canvas>
+        <div class="hud-chips">
+          <button class="chip active" data-hycam="side">CAM 01</button>
+          <button class="chip" data-hycam="top">CAM 02</button>
+        </div>
+      </div>
       <div class="feed-cap"><span class="grow" id="hy-view-cap">classical law, planner on, alternating between two fixed targets</span></div>
     </div>
     <div class="feed-card">

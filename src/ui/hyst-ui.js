@@ -21,6 +21,8 @@
 
   const camSide = camera.sideCamera(W, H);
   const camTop = camera.topCamera(W, H);
+  const CAMS = { side: { cam: camSide, name: 'cam 01 side' }, top: { cam: camTop, name: 'cam 02 top' } };
+  let viewCamKey = 'side';
   const planner = plannerMod.createPlanner();
 
   // ---- state ----
@@ -68,13 +70,14 @@
   }
 
   function drawView() {
+    const vc = CAMS[viewCamKey].cam;
     vctx.fillStyle = '#151614';
     vctx.fillRect(0, 0, W, H);
     const s = mode === 'identify' && ident ? ident.sim : sim;
     // targets (track mode)
     if (mode === 'track') {
       for (let i = 0; i < TARGETS.length; i++) {
-        const p = camSide.project(TARGETS[i]);
+        const p = vc.project(TARGETS[i]);
         if (!p) continue;
         const active = i === tgtIdx;
         vctx.strokeStyle = active ? '#e8eae6' : 'rgba(138,143,136,0.45)';
@@ -87,7 +90,7 @@
       }
     }
     // backbone
-    const bb = s.backbone(14).map((p) => camSide.project(p)).filter(Boolean);
+    const bb = s.backbone(14).map((p) => vc.project(p)).filter(Boolean);
     vctx.strokeStyle = ORANGE;
     vctx.lineWidth = 5;
     vctx.lineJoin = 'round';
@@ -96,7 +99,7 @@
     bb.forEach((p, i) => (i ? vctx.lineTo(p[0], p[1]) : vctx.moveTo(p[0], p[1])));
     vctx.stroke();
     // markers: hollow at midpoints, filled at segment ends
-    const mk = s.markers3().map((p) => camSide.project(p));
+    const mk = s.markers3().map((p) => vc.project(p));
     mk.forEach((p, i) => {
       if (!p) return;
       const hollow = i === 0 || i === 2;
@@ -108,7 +111,7 @@
     const modeTxt = mode === 'identify'
       ? 'identifying · sweep ' + (ident ? (ident.phase() + 1) : 1) + ' of 2'
       : 'tracking · compensation ' + (sim.tendonFilter ? 'on' : 'off');
-    label(vctx, 'cam 01 side · ' + modeTxt);
+    label(vctx, CAMS[viewCamKey].name + ' · ' + modeTxt);
   }
 
   function drawLoop() {
@@ -381,6 +384,13 @@
     function median(a) { const s = a.slice().sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; }
     runChunk();
   });
+
+  for (const b of document.querySelectorAll('.chip[data-hycam]')) {
+    b.addEventListener('click', () => {
+      viewCamKey = b.dataset.hycam;
+      for (const x of document.querySelectorAll('.chip[data-hycam]')) x.classList.toggle('active', x === b);
+    });
+  }
 
   sim.backlashK = trueW;
   requestAnimationFrame((now) => { prev = now; requestAnimationFrame(loop); });
