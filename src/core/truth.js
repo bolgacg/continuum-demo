@@ -79,6 +79,8 @@
     const sim = {
       payload: 0,        // 0..1, ramped by the UI
       driftOn: false,
+      backlashK: null,   // per-sim backlash half-width override (curvature units); null = P.backlashK
+      tendonFilter: null, // optional controller-side filter(idx, tendonCmd) -> tendonCmd, e.g. inverse play
       qCmd: [0, 0, 0, 0],
       target: new Array(6).fill(0), // tendon targets (2 segments x 3 tendons)
       actual: new Array(6).fill(0), // after lag + rate limit
@@ -91,7 +93,10 @@
     function updateTargets() {
       for (let i = 0; i < NSEG; i++) {
         const t = tendonsFromK(sim.qCmd[2 * i], sim.qCmd[2 * i + 1], i);
-        for (let j = 0; j < 3; j++) sim.target[3 * i + j] = t[j];
+        for (let j = 0; j < 3; j++) {
+          const idx = 3 * i + j;
+          sim.target[idx] = sim.tendonFilter ? sim.tendonFilter(idx, t[j]) : t[j];
+        }
       }
     }
 
@@ -118,7 +123,7 @@
       for (let i = 0; i < NSEG; i++) {
         const rL = P.tendonRadius * pcc.SEG_LEN[i];
         const rateMax = P.rateMaxK * rL * dt;
-        const bl = P.backlashK * rL;
+        const bl = (sim.backlashK != null ? sim.backlashK : P.backlashK) * rL;
         for (let j = 0; j < 3; j++) {
           const idx = 3 * i + j;
           // first-order lag with rate limit
