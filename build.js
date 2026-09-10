@@ -5,9 +5,9 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = __dirname;
-const CORE = ['math3', 'pcc', 'camera', 'truth', 'ibvs', 'features', 'mlp', 'learned', 'planner', 'workspace', 'hyst']
+const CORE = ['math3', 'pcc', 'camera', 'truth', 'ibvs', 'features', 'mlp', 'learned', 'planner', 'workspace']
   .map((f) => path.join(ROOT, 'src', 'core', f + '.js'));
-const UI = ['scene', 'chart', 'main', 'hyst-ui']
+const UI = ['scene', 'chart', 'main']
   .map((f) => path.join(ROOT, 'src', 'ui', f + '.js'));
 
 function bundle(files) {

@@ -148,9 +148,7 @@
       <b>Version 3.</b> The simulation is 3D; version 1 showed it through one 2D camera and
       gave the controllers a pixel to chase, and everything that looked wrong followed from
       that. This version fixes the sensing, the task and the views.
-      <a href="#changes">The three questions it drew, answered</a>. Since 10 September the
-      tendon play is also <a href="#hysteresis">measured from the cameras and cancelled</a>.
-      Version 1 is kept
+      <a href="#changes">The three questions it drew, answered</a>. Version 1 is kept
       unchanged at the <a href="#v1">bottom of the page</a>.
     </p>
   </header>
@@ -279,110 +277,9 @@
     </div>
   </div>
 
-  <h2 id="hysteresis">Hysteresis, measured and cancelled</h2>
-  <div class="prose">
-    <p>Added 10 September 2026. The truth simulator's tendons have <b>play</b>: after any
-    reversal, the first stretch of commanded motion goes nowhere, the way a worn gear turns
-    a little before its teeth re-engage. That dead band is a form of hysteresis, it is one
-    of the main reasons tendon-driven surgical robots need compensation methods at all, and
-    so far this page only displayed it. This section measures it from the outside and then
-    cancels it, under the same rule as everything else here: the estimator and the
-    compensator see what the controllers see, never the simulator's state. The act runs on
-    this version's full stack, both calibrated cameras, triangulated markers, the planner
-    and the classical law on the 3D task; the window below shows one sensor at a time, and
-    the CAM chips flip between them.</p>
-    <p>The measurement is a slow triangular sweep on one curvature channel while the two
-    fixed cameras watch the triangulated tip. After each command reversal the tip keeps
-    creeping the old way; the commanded distance covered before it turns around is the dead
-    distance. Actuator lag also delays the turn, and that share grows with sweep speed, so
-    the sweep runs at two speeds and the dead distance is extrapolated to zero speed. Half
-    of that intercept is the dead band along the swept direction; one geometric step
-    remains, because three tendons at 120&deg; share the load and the sweep direction is
-    carried hardest by the pair at &plusmn;120&deg; (a factor of sin&nbsp;120&deg;), so the
-    directional width is scaled by the routing geometry, a design constant, to give the
-    per-tendon half-width. The compensation is the standard inverse of a play
-    operator, feed-forward in the spirit of Kuhnen's hysteresis inversion: the commanded
-    tendon is led by the estimated half-width in its current direction of motion, so the
-    dead band is crossed at command time instead of at the tip's expense.</p>
-  </div>
-
-  <div class="feeds">
-    <div class="feed-card">
-      <div class="feed-head"><span class="feed-title">Sensor view</span><span class="feed-sub">the tracking loop this section runs</span></div>
-      <div class="feed-frame">
-        <canvas id="hy-view" width="460" height="345"></canvas>
-        <div class="hud-chips">
-          <button class="chip active" data-hycam="side">CAM 01</button>
-          <button class="chip" data-hycam="top">CAM 02</button>
-        </div>
-      </div>
-      <div class="feed-cap"><span class="grow" id="hy-view-cap">classical law, planner on, alternating between two fixed targets</span></div>
-    </div>
-    <div class="feed-card">
-      <div class="feed-head"><span class="feed-title">Command against tip</span><span class="feed-sub">the hysteresis loop, drawn by the sweep</span></div>
-      <div class="feed-frame"><canvas id="hy-loop" width="460" height="345"></canvas></div>
-      <div class="feed-cap"><span class="grow" id="hy-loop-cap">run the identification to draw the loop</span></div>
-    </div>
-  </div>
-
-  <div class="toolbar">
-    <span class="tgroup">
-      <label for="hy-true">True play (sim)</label><input type="range" id="hy-true" min="0.01" max="0.07" step="0.005" value="0.035"><span class="tval" id="hy-true-val">0.035</span>
-    </span>
-    <span class="tgroup">
-      <button id="hy-identify">Identify from the cameras</button>
-      <span class="tval" id="hy-est">not yet estimated</span>
-    </span>
-    <span class="tgroup">
-      <label class="switch" title="Feed-forward inverse play on the commanded tendons, using the width on the right."><input type="checkbox" id="hy-comp" disabled><span class="knob"></span>Compensation</label>
-    </span>
-    <span class="tgroup">
-      <label for="hy-west">width used</label><input type="range" id="hy-west" min="0.005" max="0.09" step="0.001" value="0.035" disabled><span class="tval" id="hy-west-val">–</span>
-    </span>
-    <span class="tgroup last">
-      <button id="hy-eval" disabled>Run the paired evaluation</button>
-      <button id="hy-reset">Reset act</button>
-    </span>
-  </div>
-  <p class="caption">The sim slider sets the mechanism's real dead band; the estimator never reads it.
-  After identifying, drag the width used away from the estimate to see what a wrong
-  estimate costs: too much lead re-opens the error from the other side.</p>
-  <div class="demo-note" id="hy-note"></div>
-
-  <div class="panel">
-    <div class="panel-title">Tip error while tracking</div>
-    <div class="panel-sub">Distance from the triangulated tip to the current target. Hairline: 5 mm settle band. Toggles and slider changes are marked as they happen.</div>
-    <canvas id="hy-err" width="944" height="170"></canvas>
-  </div>
-
-  <div class="panel">
-    <div class="panel-title">Paired evaluation, same targets and seeds, only the filter changes</div>
-    <div class="panel-sub" id="hy-eval-sub">20 seeded targets, 6 s each, the page's trial protocol, computed in this browser when you click the button. Settle: error under 5 mm held 0.8 s. Steady state: mean error over the final second.</div>
-    <div class="table-scroll">
-    <table class="static-table">
-      <thead><tr><th>Compensation</th><th>width used</th><th>settled</th><th>median settle</th><th>mean steady state</th></tr></thead>
-      <tbody id="hy-eval-rows">
-        <tr><td colspan="5">Not run yet in this browser. Identify first, then click Run.</td></tr>
-      </tbody>
-    </table>
-    </div>
-  </div>
-
-  <div class="prose">
-    <p>What this act does not claim: the estimator needs the drift disturbance off, because
-    a plant that wanders during the sweep smears the reversal detection, and a drifting
-    mechanism would need periodic re-identification; the compensation is feed-forward and
-    exactly as good as its width, which the evaluation shows from both sides; and the lag
-    correction removes most of the speed bias but not all of it, so the estimate carries a
-    small residual you can read off the panel by comparing it with the sim slider. Cameras
-    in this simulation are exact; on a real robot, pixel noise sets a floor under the
-    smallest measurable dead band.</p>
-  </div>
-
   <h2>What this is, and is not</h2>
   <ul class="notes">
     <li>Both controllers see exactly the same thing: four markers triangulated from two fixed cameras. Neither reads simulator state. The inspector is for you, not for them; hiding a robot hides its drawing, not its simulation.</li>
-    <li>The hysteresis act obeys the same boundary: its identifier drives commands and reads only the triangulated tip, and its compensator filters only the commanded tendons. The "true play" slider writes into that act's private simulator; the two robots above are untouched by it.</li>
     <li>The two robots are identical simulator instances with the same random seed, so the comparison is fair. Both sit under the same planner, and the planner can be switched off for both.</li>
     <li>The robot's geometry is fixed: constant arc lengths, constant curvature per segment, markers at fixed arc positions (filled at the segment ends, hollow at the midpoints). What changed on screen in version 1 was perspective. The Tendons switch strips the tube and draws what actuates each segment: three tendons at fixed radius (drawn at 2.5 times the model's tendon radius so they can be told apart) with spacer discs at the base, midpoint and end of each segment. Their colour runs from white (slack) to the robot's colour (fully shortened), driven by the simulator's transmitted tendon displacement, so backlash and drift show as tendons that stay coloured after the command has moved on.</li>
     <li>The "truth" simulator is phenomenological: constant curvature plus actuator lag, tendon backlash, gravity droop, inter-segment coupling and optional tendon drift. Its curvature is biased by load, not redistributed along the arc, so it stays in the constant-curvature shape family; a rod model would be the next step, and the model mismatch here is milder than a real tendon-driven robot's.</li>
@@ -400,7 +297,7 @@
   <iframe class="v1-frame" src="v1.html" title="Version 1 of the demo, unchanged" loading="lazy"></iframe>
 
   <footer>
-    <span>Bolgaç Gülen · August to September 2026 · version 3.1</span>
+    <span>Bolgaç Gülen · August 2026 · version 3</span>
     <span>Simulation only. No hardware, no clinical anything.</span>
     <span id="fps"></span>
   </footer>

@@ -201,26 +201,6 @@ under payload with drift, slightly behind under drift alone. A null-space term
 the planner and moved the numbers only slightly, because the failure is a basin,
 not a redundancy resolution.
 
-## Version 3.1: hysteresis, measured and cancelled (10 September 2026)
-
-The tendon play is one of the main reasons continuum surgical robots need
-compensation methods, and until now the page only displayed it. A new section
-measures it from the outside and cancels it, under the same boundary as the
-rest of the page: the identifier commands a slow triangular sweep at two speeds
-and watches only the triangulated tip; the dead distance after each command
-reversal is extrapolated to zero speed to remove the lag share, and the
-directional dead band is converted to the per-tendon half-width through the
-routing geometry (three tendons at 120 degrees; the swept direction is carried
-by the pair at sin 120). Compensation is the standard inverse-play
-feed-forward: the commanded tendon is led by the estimated half-width in its
-current direction of motion. An in-browser paired evaluation runs the page's
-trial protocol on 20 seeded targets with the filter off, at the estimated
-width, and at twice the estimate; the last row is there on purpose, because an
-over-estimated width re-opens the error from the other side. `test/hyst.js`
-checks the inversion is exact against a bare play operator, the identifier
-lands near the true width across widths, and the evaluation orders the three
-conditions.
-
 ## What this does not claim
 
 - It is a simulation. No hardware, no clinical anything. The subject is
@@ -248,11 +228,10 @@ train/workspace.js       reachable envelope + occupancy grid of the ideal model 
 train/eval.js            closed-loop evaluation tables (writes eval.json, rendered into the page)
 train/readme-tables.js   rewrites the README tables from eval.json
 test/sanity.js           kinematics, cameras, truth-sim, control, planner and envelope checks
-test/hyst.js             hysteresis act: exact inversion, identification accuracy, eval ordering
 ```
 
 To rebuild from scratch: `node train/train.js` (about 45 minutes on a laptop),
 `node train/workspace.js`, `node train/eval.js` (about 6 minutes),
 `node train/readme-tables.js`, then `node build.js`. Everything is deterministic via seeded RNGs.
 
-Bolgaç Gülen, August to September 2026
+Bolgaç Gülen, August 2026
