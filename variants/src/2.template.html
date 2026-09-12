@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What does one camera hide about a continuum robot?</title>
+<!--CR_HEAD-->
+</head>
+<body data-variant="2">
+<div class="wrap" id="variant-2">
+
+  <header>
+    <div class="eyebrow">simulation study · version 3 · variant 2 of 5 · <!--BUILD_STAMP--></div>
+    <h1>What does one camera hide about a continuum robot?</h1>
+    <p class="intro">
+      Version 1 of this simulation showed a 3D robot through one 2D camera and gave its controllers
+      a pixel to chase. Three questions from a robotics researcher each landed on a consequence of
+      that choice. This page replays each consequence inside the current simulator, then switches
+      to the correction under the same physics, so both can be measured. At the end you will know
+      which of the first version's faults were sensing, which were drawing, and which were control,
+      and what each cost in millimetres.
+    </p>
+    <ul class="cr-headlines">
+      <li><span>How far from the point did a one-camera loop stop?<small>the same feedback law on a pixel and on the triangulated point, live on this page</small></span><b data-h="ray">run act one</b></li>
+      <li><span>Does anything move along the robot?<small>3D chord of the first marker pair against its spacing on the old camera's screen, over the sweep in act two</small></span><b data-h="chord">run act two</b></li>
+      <li><span>Does a feedback law alone reach the edge of the workspace?<small>direct against planned, classical law, 40 edge targets, from the evaluation run</small></span><b><!--EVAL:edge,nominal,classical,0--> against <!--EVAL:edge,nominal,classical,3--></b></li>
+    </ul>
+    <div class="cr-byline"><span>Bolgaç Gülen · September 2026</span><a href="https://github.com/bolgacg/continuum-demo">source on GitHub</a><button data-tour-open>Restart the walkthrough</button></div>
+  </header>
+
+  <h2>Before the robot, five things</h2>
+  <ol class="primer">
+    <li>A continuum robot bends along its length instead of turning at joints. This one has two bending segments of fixed length, like two circle arcs joined end to end.</li>
+    <li>Four markers on the robot are seen by two fixed cameras. Each marker's 3D position is computed from the two images, which is called triangulation. A single camera fixes only two of a point's three coordinates; the depth along its viewing ray is not observed.</li>
+    <li>A controller is a rule that turns the gap between the tip and the target into a change of bend. The orange one uses the textbook model; the blue one learned from a simulator with lag, backlash, sag and drift added.</li>
+    <li>The reachable set is every point the tip can occupy without exceeding the bending limits. A target outside it cannot be reached by any controller.</li>
+    <li>Lengths on this page are a display convention: the model is dimensionless and drawn as if the robot were 180 mm long.</li>
+  </ol>
+  <div class="schematic" data-schematic><canvas width="920" height="690"></canvas><svg viewBox="0 0 920 690"></svg></div>
+  <p class="caption">The setup, drawn by the same renderer as every scene below: the base, the two segments, the four markers (filled at segment ends, hollow at midpoints), the two sensors, the target plane and the click ray that places a target on it.</p>
+
+  <details class="glossary" open>
+    <summary>Terms used on this page</summary>
+    <dl>
+      <dt>constant curvature</dt><dd>the assumption that each segment bends as one circular arc; four numbers then describe the whole robot, a curvature and a bending direction per segment</dd>
+      <dt>marker</dt><dd>one of four points on the robot that the cameras can see: the middle and end of each segment</dd>
+      <dt>triangulation</dt><dd>computing a point's 3D position from its pixel in two cameras whose poses are known</dd>
+      <dt>viewing ray</dt><dd>the line in space that lands on one pixel of one camera; every point on it looks the same to that camera</dd>
+      <dt>visual servoing</dt><dd>closing the control loop on what a camera sees; on a pixel in version 1, on the triangulated tip now</dd>
+      <dt>Jacobian</dt><dd>the table of how much each curvature moves the tip, in pixels or in space; the classical law inverts it to choose a bend</dd>
+      <dt>inverse kinematics</dt><dd>finding the bend that puts the tip on a chosen point, solved here on the ideal model</dd>
+      <dt>bending plane</dt><dd>the direction a segment bends toward; a target can be reached from several of them, and a local law picks one greedily</dd>
+      <dt>planner</dt><dd>solve the inverse kinematics first, then let the feedback law track the path to that solution</dd>
+      <dt>settle, steady state</dt><dd>settle: the first time the tip error stays under 5 mm for 0.8 s; steady state: the mean error over the final second of a 6 s trial</dd>
+      <dt>edge and interior targets</dt><dd>edge targets sit at 95 to 100 percent of the bending limits; interior ones at up to 85 percent</dd>
+    </dl>
+  </details>
+
+  <h2>The three questions this page answers</h2>
+  <div class="questions">
+    <p class="caption">Asked about version 1 on 29 August, quoted as written.</p>
+    <blockquote><span class="q">Q1</span>How did you determine the irregular boundary?</blockquote>
+    <blockquote><span class="q">Q2</span>How did you model your robot? Is the distance between each pair of joints variable? In practice, it is usually difficult to physically manufacture a continuum structure with continuously varying geometry.</blockquote>
+    <blockquote><span class="q">Q3</span>How did you solve the inverse kinematics of the robot?</blockquote>
+    <p class="caption">All three point at one cause: the simulation is 3D, and version 1 showed it through a single 2D camera and gave the controllers a pixel to chase. Each act below is one consequence.</p>
+  </div>
+  <ul class="refs">
+    <li>Webster and Jones, 2010, Design and kinematic modeling of constant curvature continuum robots: the constant-curvature arc, the geometry of every segment here.</li>
+    <li>Chaumette and Hutchinson, 2006, Visual servo control: the feedback law, and the known limitation of a single point feature that act one replays.</li>
+    <li>Kuhnen, 2003, Modeling, identification and compensation of complex hysteretic nonlinearities: the play operator, the element the simulated backlash is built from.</li>
+  </ul>
+
+  <!-- ============================ act one ============================ -->
+  <section class="act" data-act="1" id="act1">
+    <div class="act-eyebrow">Act one · sensing</div>
+    <h2 class="act-title">A point target seen by one camera is a line</h2>
+    <p class="lede">This act matters because the irregular boundary and the odd reaching both start here: with one camera the loop was never asked for depth. Below, the classical law chases the same target in two ways. As in version 1, it sees only the side camera and drives the tip's pixel onto the target's pixel. As now, it drives the triangulated tip onto the 3D point. The inspector draws the side camera's viewing ray through the target, the line every point of which looks like the target to that camera.</p>
+    <div class="scene" data-scene="a1"></div>
+    <p class="control"><b>Flip the switch</b> and the target is re-run from rest under the other rule. <span class="hint"><span class="seg" data-switch="a1"><button data-state="v1">as in version 1</button><button data-state="now" class="on">as now</button></span> The learned controller is absent from this act: version 1's ensemble took single-image features and has no honest equivalent here.</span></p>
+    <div class="panel">
+      <div class="panel-title">Distance to the point and distance to the ray</div>
+      <div class="panel-sub">The tip's distance to the target point (solid) and to the side camera's ray through it (dashed), live over the last 16 seconds.</div>
+      <canvas class="cr-chart" data-chart="ray" width="944" height="220"></canvas>
+      <ul class="lines">
+        <li><b>You see</b>two distances from the orange tip, in millimetres: to the target point, and to the line the side camera would accept as the target.</li>
+        <li><b>Read it</b>under version 1's rule the dashed line reaches zero and the solid one does not; the gap between them is the unobserved depth. Under the current rule both reach the settle band.</li>
+        <li><b>Take away</b>a pixel task is satisfied anywhere on a line, so the loop stops wherever it first meets it.</li>
+      </ul>
+    </div>
+    <div class="verdict">
+      <p class="opener">With one camera the controller settled on the ray, not on the point; with two it settled on the point.</p>
+      <p>Last run as in version 1: <span class="num" data-v="rayPoint">…</span> from the point in the final second, <span class="num" data-v="rayRay">…</span> from the ray. Last run as now: <span class="num" data-v="nowPoint">…</span> from the point. The difference is depth along the ray, which one camera cannot see.</p>
+    </div>
+    <p class="handover">The same camera drew the boundary and the robot; the next act shows what perspective did to a geometry that never changed.</p>
+  </section>
+
+  <!-- ============================ act two ============================ -->
+  <section class="act" data-act="2" id="act2">
+    <div class="act-eyebrow">Act two · drawing</div>
+    <h2 class="act-title">Perspective, and a taper that was never modelled</h2>
+    <p class="lede">This act matters because "is the distance between joints variable" was a fair reading of what the old view showed, and the answer has to show the same robot in the old view and in the new one. Below, the robot sweeps between two targets under the planner. As in version 1, it is seen through the oblique camera of the first page; as now, through the calibrated side sensor, with the Top chip as the second view. The geometry is identical in both states: two arcs of fixed length, markers at fixed arc positions.</p>
+    <div class="scene" data-scene="a2"></div>
+    <p class="control"><b>Flip the switch</b> to change the camera the view is drawn through. <span class="hint"><span class="seg" data-switch="a2"><button data-state="v1">as in version 1</button><button data-state="now" class="on">as now</button></span> Version 1 also drew the tube with a decorative taper; that drawing choice is not reproduced, the camera is.</span></p>
+    <div class="panel">
+      <div class="panel-title">Marker spacing on screen and in 3D, each as a ratio to its start</div>
+      <div class="panel-sub">The first marker pair: its on-screen spacing as a ratio to its first value under the current camera (orange) and its 3D chord as a ratio to its value when the act began (grey), on a logarithmic axis, live over the last 16 seconds, switch flips marked.</div>
+      <canvas class="cr-chart" data-chart="chord" width="944" height="220"></canvas>
+      <ul class="lines">
+        <li><b>You see</b>two lines for one pair of markers, each as a ratio to its own starting value: how far apart they are on the current screen, and how far apart they are in space.</li>
+        <li><b>Read it</b>the grey line stays near one in either state, because the arc between the markers is fixed and only bending shortens its chord; the orange line swings in both states, and swings most under the old oblique camera.</li>
+        <li><b>Take away</b>no single screen can show fixed geometry; the 3D estimate from two cameras can.</li>
+      </ul>
+    </div>
+    <div class="verdict">
+      <p class="opener">The 3D chord stays within a few percent while the on-screen spacing swings by a large factor, whichever camera draws it.</p>
+      <p>Since this act started, the first pair's 3D chord varied by <span class="num" data-v="chordPct">…</span> percent and its spacing on the side sensor by a factor of <span class="num" data-v="pixNew">…</span>. Under the old camera the factor is <span class="num" data-v="pixOld">…</span>. That the new camera also swings is the point: perspective is a property of any single view, not of the old camera alone.</p>
+    </div>
+    <p class="handover">With the geometry settled, four numbers remain to be chosen, two curvatures and two bending planes; the next act replays how a local law chose them.</p>
+  </section>
+
+  <!-- ============================ act three ============================ -->
+  <section class="act" data-act="3" id="act3">
+    <div class="act-eyebrow">Act three · control</div>
+    <h2 class="act-title">The bending plane a local law picks</h2>
+    <p class="lede">This act matters because the third question, how was the inverse kinematics solved, had the answer "it was not", and the cost is measurable. Both controllers below get the same target, curled under the base. As in version 1, they chase it directly and a local law commits to whichever bending plane the gradient points at first. As now, the inverse kinematics is solved on the ideal model and the same laws track that path.</p>
+    <div class="scene" data-scene="a3"></div>
+    <p class="control"><b>Flip the switch</b> and the target is re-run from rest. <span class="hint"><span class="seg" data-switch="a3"><button data-state="v1">as in version 1</button><button data-state="now" class="on">as now</button></span> As in version 1 means the planner off; as now means the planner on.</span></p>
+    <div class="panel">
+      <div class="panel-title">Bending plane of segment one against the inverse-kinematics solution</div>
+      <div class="panel-sub">The angle between each controller's commanded bending plane for segment one and the plane of the solved configuration, in degrees, live over the last 16 seconds.</div>
+      <canvas class="cr-chart" data-chart="plane" width="944" height="220"></canvas>
+      <ul class="lines">
+        <li><b>You see</b>for each controller, how far its chosen bending direction for the first segment is from the solver's, in degrees over time.</li>
+        <li><b>Read it</b>a line that parks far from zero is a controller committed to the wrong plane at the curvature limit; with the plan the line reaches zero before the loop starts, because the plan begins where the solver ends.</li>
+        <li><b>Take away</b>the stall is a wrong plane held at the limit, a hidden degree of freedom, not a slow controller.</li>
+      </ul>
+    </div>
+    <div class="verdict">
+      <p class="opener">Direct, the classical law parks off the solution plane and stops short; planned, both controllers reach the target.</p>
+      <p>Last run as in version 1: the classical law ended <span class="num" data-v="angC">…</span> from the solution plane and <span class="num" data-v="stallC">…</span> from the target. Last run as now: settled in <span class="num" data-v="settleNow">…</span>. Over <!--EVAL_TRIALS--> edge targets in the evaluation run, direct, the classical law settled <span class="num"><!--EVAL:edge,nominal,classical,0--></span> and the learned law <span class="num"><!--EVAL:edge,nominal,learned,0--></span>; planned, <span class="num"><!--EVAL:edge,nominal,classical,3--></span> and <span class="num"><!--EVAL:edge,nominal,learned,3--></span>.</p>
+    </div>
+    <p class="handover">The plan is computed on the ideal model, so what the truth model adds still lands on the loop; the model card and the failure pane say how much.</p>
+  </section>
+
+  <h2>Model card, the one thing on this page that was trained</h2>
+  <div data-modelcard></div>
+  <div class="cr-card"><dt>Scored on</dt><dd>the <!--EVAL_TRIALS-->-trial closed-loop tables below. Against the classical law: on edge targets, direct, <!--EVAL:edge,nominal,learned,2--> steady state against <!--EVAL:edge,nominal,classical,2-->; under drift on interior targets, direct, <!--EVAL:interior,drift,learned,0--> settled against <!--EVAL:interior,drift,classical,0-->.</dd>
+  <dt>Verdict</dt><dd>ahead of the classical law on edge targets and under payload, level under payload with drift, slightly behind under drift alone. The extrapolation flag fired on 0 percent of steps in every table cell, so those runs do not test it.</dd></div>
+
+  <h2>What this page gets wrong</h2>
+  <ul class="failpane">
+    <li>The "as in version 1" states are reconstructions on the version 3 stack: the same feedback law on a pixel, the same camera pose, the planner off. Version 1 itself is unchanged at <a href="../v1.html">v1.html</a>, and its decorative tube taper is not reproduced here.</li>
+    <li>Version 1's learned ensemble took single-image features; it has no honest counterpart in act one, so that act runs the classical law alone.</li>
+    <li>Direct, the learned law still settles only <!--EVAL:edge,nominal,learned,0--> of the edge targets; the plan, not the learning, is what reaches all of them.</li>
+    <li>The truth model is invented: its coefficients were typed by the author, and it stays in the constant-curvature family. The cameras are perfect and triangulation is exact.</li>
+    <li>The plan inherits the ideal model's errors and costs about a third of a second on interior targets: median settle <!--EVAL:interior,nominal,classical,1--> direct against <!--EVAL:interior,nominal,classical,4--> planned.</li>
+    <li>An earlier version of this page said the marker chord varies by under 4 percent; act two measures it live instead of asserting it.</li>
+    <li>Millimetres are a display convention, not a claim about any device.</li>
+  </ul>
+
+  <h2>Free play</h2>
+  <p class="caption">Everything unpinned: both robots, all toggles, the charts and the trial table, as on the main page.</p>
+  <div class="scene" data-scene="a4"></div>
+
+  <h2>How this page was built</h2>
+  <div class="prose">
+    <p>The simulator, sensing, planner, both controllers, the pretrained weights and the precomputed envelope are the version 3 code, loaded unchanged. The pixel law of act one is version 1's formulation on version 3's side camera: a 2 by 4 pixel Jacobian by central differences and the same damped least-squares step. The ensemble was trained by <span class="kv">node train/train.js</span>, the evaluation tables by <span class="kv">node train/eval.js</span> (<!--EVAL_DATE-->), all with fixed seeds. Every number on this page is read from that evaluation file at build time or computed in this browser; none is typed.</p>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Planner off against planner on, <!--EVAL_TRIALS--> trials per cell</div>
+    <div class="panel-sub">Headless, the same protocol as the trial tables above. Settled out of 40, median settle time, mean steady-state error.</div>
+    <div class="table-scroll">
+    <table class="static-table">
+      <thead><tr><th>Targets</th><th>Condition</th><th>Controller</th><th>direct settled</th><th>direct settle</th><th>direct steady</th><th>planned settled</th><th>planned settle</th><th>planned steady</th></tr></thead>
+      <tbody><!--EVAL_ROWS--></tbody>
+    </table>
+    </div>
+  </div>
+
+  <footer>
+    <span>Bolgaç Gülen · September 2026 · variant 2</span>
+    <span>Simulation only. No hardware, no clinical anything.</span>
+    <span data-fps></span>
+  </footer>
+</div>
+<script>
+/*__UI__*/
+</script>
+</body>
+</html>

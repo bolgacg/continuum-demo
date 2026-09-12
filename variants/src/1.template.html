@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How far can a two-segment continuum robot reach, and how does it get there?</title>
+<!--CR_HEAD-->
+</head>
+<body data-variant="1">
+<div class="wrap" id="variant-1">
+
+  <header>
+    <div class="eyebrow">simulation study · version 3 · variant 1 of 5 · <!--BUILD_STAMP--></div>
+    <h1>How far can a two-segment continuum robot reach, and how does it get there?</h1>
+    <p class="intro">
+      This page answers three questions a robotics researcher asked about the first version of
+      this simulation, one chapter each: how the workspace boundary was determined, whether the
+      robot's geometry varies, and how the inverse kinematics was solved. Each answer is computed
+      in front of you rather than asserted. At the end you will know that the boundary is the
+      reachable set's cross-section, that the geometry is fixed and only the viewpoint moved, and
+      that a feedback law alone loses edge targets a plan above it reaches.
+    </p>
+    <ul class="cr-headlines">
+      <li><span>Does a feedback law alone reach the edge of the workspace?<small>direct against planned, classical law, 40 edge targets, from the evaluation run</small></span><b><!--EVAL:edge,nominal,classical,0--> against <!--EVAL:edge,nominal,classical,3--></b></li>
+      <li><span>Does anything move along the robot?<small>3D chord of the first marker pair against its spacing on one camera's screen, 300 random poses, computed on load</small></span><b data-h="chord">computing</b></li>
+      <li><span>Is the drawn outline the reachable set?<small>outline against inverse kinematics at the current plane height, computed on load</small></span><b data-h="agree">computing</b></li>
+    </ul>
+    <div class="cr-byline"><span>Bolgaç Gülen · September 2026</span><a href="https://github.com/bolgacg/continuum-demo">source on GitHub</a><button data-tour-open>Restart the walkthrough</button></div>
+  </header>
+
+  <h2>Before the robot, five things</h2>
+  <ol class="primer">
+    <li>A continuum robot bends along its length instead of turning at joints. This one has two bending segments of fixed length, like two circle arcs joined end to end.</li>
+    <li>Four markers on the robot are seen by two fixed cameras. Each marker's 3D position is computed from the two images, which is called triangulation, and that is all either controller gets.</li>
+    <li>A controller is a rule that turns the gap between the tip and the target into a change of bend. The orange one uses the textbook model; the blue one learned from a simulator with lag, backlash, sag and drift added.</li>
+    <li>The reachable set is every point the tip can occupy without exceeding the bending limits. A target outside it cannot be reached by any controller.</li>
+    <li>Lengths on this page are a display convention: the model is dimensionless and drawn as if the robot were 180 mm long.</li>
+  </ol>
+  <div class="schematic" data-schematic><canvas width="920" height="690"></canvas><svg viewBox="0 0 920 690"></svg></div>
+  <p class="caption">The setup, drawn by the same renderer as every scene below: the base, the two segments, the four markers (filled at segment ends, hollow at midpoints), the two sensors, the target plane and the click ray that places a target on it.</p>
+
+  <details class="glossary" open>
+    <summary>Terms used on this page</summary>
+    <dl>
+      <dt>constant curvature</dt><dd>the assumption that each segment bends as one circular arc; four numbers then describe the whole robot, a curvature and a bending direction per segment</dd>
+      <dt>marker</dt><dd>one of four points on the robot that the cameras can see: the middle and end of each segment</dd>
+      <dt>triangulation</dt><dd>computing a point's 3D position from its pixel in two cameras whose poses are known</dd>
+      <dt>visual servoing</dt><dd>closing the control loop on what a camera sees, here on the triangulated tip</dd>
+      <dt>Jacobian</dt><dd>the table of how much each curvature moves the tip; the classical law inverts it to choose a bend</dd>
+      <dt>inverse kinematics</dt><dd>finding the bend that puts the tip on a chosen point, solved here on the ideal model</dd>
+      <dt>reachable set, cross-section</dt><dd>every point the tip can occupy within the limits; its slice at one height is the outline drawn on the target plane</dd>
+      <dt>planner</dt><dd>solve the inverse kinematics first, then let the feedback law track the path to that solution</dd>
+      <dt>ensemble</dt><dd>five small networks that each propose a command; their spread is a measure of doubt</dd>
+      <dt>extrapolation flag</dt><dd>the ensemble saying the situation is outside what it was trained on, and lowering its own gain</dd>
+      <dt>settle, steady state</dt><dd>settle: the first time the tip error stays under 5 mm for 0.8 s; steady state: the mean error over the final second of a 6 s trial</dd>
+      <dt>play operator</dt><dd>the simulated backlash: after a reversal, the first stretch of commanded motion goes nowhere</dd>
+      <dt>edge and interior targets</dt><dd>edge targets sit at 95 to 100 percent of the bending limits; interior ones at up to 85 percent</dd>
+    </dl>
+  </details>
+
+  <h2>The three questions this page answers</h2>
+  <div class="questions">
+    <p class="caption">Asked about version 1 on 29 August, quoted as written.</p>
+    <blockquote><span class="q">Q1</span>How did you determine the irregular boundary?</blockquote>
+    <blockquote><span class="q">Q2</span>How did you model your robot? Is the distance between each pair of joints variable? In practice, it is usually difficult to physically manufacture a continuum structure with continuously varying geometry.</blockquote>
+    <blockquote><span class="q">Q3</span>How did you solve the inverse kinematics of the robot?</blockquote>
+    <p class="caption">And on 6 September: whether the model is a geometric model or some other type. It is geometric, and chapter two says exactly which kind.</p>
+  </div>
+  <ul class="refs">
+    <li>Webster and Jones, 2010, Design and kinematic modeling of constant curvature continuum robots: the constant-curvature arc, the geometry of every segment here.</li>
+    <li>Chaumette and Hutchinson, 2006, Visual servo control: the feedback law, resolved-rate servoing on a point feature.</li>
+    <li>Kuhnen, 2003, Modeling, identification and compensation of complex hysteretic nonlinearities: the play operator, the element the simulated backlash is built from.</li>
+  </ul>
+
+  <!-- ============================ chapter one ============================ -->
+  <section class="act" data-act="1" id="act1">
+    <div class="act-eyebrow">Chapter one · the boundary</div>
+    <h2 class="act-title">The reachable set and its cross-section</h2>
+    <p class="lede">This chapter matters because version 1 drew a boundary that was not the reachable set, and every claim about a target begins with whether the tip can get there. The grey cage is the outer envelope of the reachable set; the outline on the target plane is the set's exact slice at that height. Drag the plane through the workspace and watch the slice change shape; click inside the outline to place a target and both controllers go for it.</p>
+    <div class="scene" data-scene="a1"></div>
+    <p class="control"><b>Drag the target plane</b> in the side sensor view, or its slider. <span class="hint">The outline redraws at each height, and the chart's marker follows.</span></p>
+    <div class="panel">
+      <div class="panel-title">Reachable area against height</div>
+      <div class="panel-sub">Cross-section area of the reachable set at each plane height, from the occupancy grid and from the outer cage, computed on load.</div>
+      <canvas class="cr-chart" data-chart="area" width="944" height="220"></canvas>
+      <ul class="lines">
+        <li><b>You see</b>the area of the reachable cross-section at each height, in square millimetres by the display convention: solid from the 300,000-sample occupancy grid, grey from the outer cage's slice; the dashed marker is the current plane.</li>
+        <li><b>Read it</b>where grey sits above solid, the cage claims space the tip cannot occupy; near the base the solid line drops because the set is a ring there, a robot of fixed length cannot bring its tip next to its own base.</li>
+        <li><b>Take away</b>the outline on the plane is the reachable set itself; a cage alone would over-promise near the base.</li>
+      </ul>
+    </div>
+    <div class="verdict">
+      <p class="opener">The outline is the reachable set's cross-section at this height, and inverse kinematics decides each target.</p>
+      <p>At the current plane the outline and the solver agree on <span class="num" data-v="agreeP">…</span> percent of <span class="num" data-v="agreeN">…</span> random points; the cage's slice agrees on <span class="num" data-v="cageP">…</span> percent. Where a click lands outside the outline, the trial table says <b>beyond reach</b> and the plan stops at the closest reachable point.</p>
+    </div>
+    <p class="handover">The set was computed from a model whose geometry never changes; the next chapter shows what does and does not change as that model bends further.</p>
+  </section>
+
+  <!-- ============================ chapter two ============================ -->
+  <section class="act" data-act="2" id="act2">
+    <div class="act-eyebrow">Chapter two · the geometry</div>
+    <h2 class="act-title">Fixed arc lengths under a moving viewpoint</h2>
+    <p class="lede">This chapter matters because one view made the markers seem to slide along the robot, and a reader who believes the geometry varies cannot trust the reachable set of chapter one. Nothing varies: two arcs of fixed length, one constant curvature per segment, three tendons each at a fixed radius, four markers at fixed positions along the arc. The robot below sweeps between two targets with its tendons drawn; orbit it and press Side or Top.</p>
+    <div class="scene" data-scene="a2"></div>
+    <p class="control"><b>Move the Flexibility slider</b> under the view. <span class="hint">It scales the bending limits, the one parameter that changes what the robot can do without changing its geometry; the reach follows, the lengths do not.</span></p>
+    <div class="panel">
+      <div class="panel-title">What changes with flexibility and what does not</div>
+      <div class="panel-sub">300 random poses per flexibility setting, computed on load; the marker is the current setting.</div>
+      <canvas class="cr-chart" data-chart="flex" width="944" height="240"></canvas>
+      <ul class="lines">
+        <li><b>You see</b>against flexibility, the variation over random poses of four quantities, as a percentage of each one's mean on a logarithmic axis: the backbone's arc length, the 3D chord of each neighbouring marker pair, and the first pair's spacing on the side camera's screen.</li>
+        <li><b>Read it</b>the arc-length line sits on the floor, it does not vary at all; the chord lines are a few percent and rise with flexibility, because an arc's chord shortens as the arc bends; the pixel line sits far above them, because a chord pointing toward the lens has little length on screen.</li>
+        <li><b>Take away</b>nothing moves along the robot; bending and perspective are what the eye saw.</li>
+      </ul>
+    </div>
+    <div class="verdict">
+      <p class="opener">Arc length is constant to four decimals at every flexibility; the chord shortens by a few percent because an arc's chord shortens as it bends.</p>
+      <p>At the current flexibility the first pair's 3D chord varies by <span class="num" data-v="chordP">…</span> percent over random poses, the other pairs by <span class="num" data-v="chordP2">…</span> and <span class="num" data-v="chordP3">…</span> percent, while its spacing on the side camera varies by a factor of <span class="num" data-v="pixR">…</span>. The arc length is <span class="num" data-v="arc">…</span> units in every pose, a constant of the model rather than a measurement.</p>
+    </div>
+    <p class="handover">A fixed geometry leaves four numbers to choose, two curvatures and two bending planes; the next chapter asks how to choose them for a target and what happens when a feedback law chooses them alone.</p>
+  </section>
+
+  <!-- ============================ chapter three ============================ -->
+  <section class="act" data-act="3" id="act3">
+    <div class="act-eyebrow">Chapter three · the inverse kinematics</div>
+    <h2 class="act-title">Inverse kinematics above the feedback law</h2>
+    <p class="lede">This chapter matters because version 1 solved no inverse kinematics at all, and the measured cost of that omission is the largest number on the page. Both controllers below get the same target, curled under the base where a local law is tempted into the wrong bending plane. With the planner off they chase it directly; with it on, the inverse kinematics is solved on the ideal model first and the same feedback laws track that path.</p>
+    <div class="scene" data-scene="a3"></div>
+    <p class="control"><b>Flip the Planner switch</b> in the toolbar. <span class="hint">Each flip re-runs the same target from the same rest pose, so the two traces are comparable. <button data-run="hook">Run the target again</button></span></p>
+    <ul class="lines">
+      <li><b>You see</b>the distance from each controller's triangulated tip to the target over the last 16 seconds, with the 5 mm settle band as the hairline and each switch flip marked.</li>
+      <li><b>Read it</b>a line that flattens above the band is a stall, the controller parked at its bending limit in the wrong plane; a line that crosses the band and stays is a settle.</li>
+      <li><b>Take away</b>direct, the classical law stalls short of this target; planned, both controllers reach it.</li>
+    </ul>
+    <div class="verdict">
+      <p class="opener">A feedback law alone loses edge targets; a plan on the ideal model reaches them.</p>
+      <p>On this target the direct classical law stopped <span class="num" data-v="stall">…</span> from the target in its last second (live, from the trial above); planned it settled in <span class="num" data-v="plannedSettle">…</span>. Over <!--EVAL_TRIALS--> edge targets in the evaluation run, direct, the classical law settled <span class="num"><!--EVAL:edge,nominal,classical,0--></span> and stalled <span class="num"><!--EVAL:edge,nominal,classical,2--></span> short on average; planned, <span class="num"><!--EVAL:edge,nominal,classical,3--></span>. The learned law alone settled <span class="num"><!--EVAL:edge,nominal,learned,0--></span>; planned, <span class="num"><!--EVAL:edge,nominal,learned,3--></span>. A null-space term was tried first and barely moved the numbers; the failure is a basin, not redundancy resolution.</p>
+    </div>
+    <p class="handover">Both laws still carry the truth model's lag, backlash, sag and drift; the model card and the failure pane say how much, and the free-play scene at the end has the toggles.</p>
+  </section>
+
+  <h2>Model card, the one thing on this page that was trained</h2>
+  <div data-modelcard></div>
+  <div class="cr-card"><dt>Scored on</dt><dd>the <!--EVAL_TRIALS-->-trial closed-loop tables below. Against the classical law, the thing you could run without a model: on edge targets, direct, <!--EVAL:edge,nominal,learned,2--> steady state against <!--EVAL:edge,nominal,classical,2-->; under drift on interior targets, direct, <!--EVAL:interior,drift,learned,0--> settled against <!--EVAL:interior,drift,classical,0-->.</dd>
+  <dt>Verdict</dt><dd>ahead of the classical law on edge targets and under payload, level under payload with drift, slightly behind under drift alone. The extrapolation flag fired on 0 percent of steps in every table cell, so those runs do not test it; only a target beyond the reach on this page does.</dd></div>
+
+  <h2>What this page gets wrong</h2>
+  <ul class="failpane">
+    <li>Direct, the learned law still loses <!--EVAL:edge,nominal,learned,0--> of the edge targets read the other way round: it settles that many, not all.</li>
+    <li>Under payload with drift, planned, interior targets settle <!--EVAL:interior,payload + drift,classical,3--> (classical) and <!--EVAL:interior,payload + drift,learned,3--> (learned) with steady states near 4 mm, close to the band.</li>
+    <li>The truth model is invented: its coefficients were typed by the author, and it stays in the constant-curvature family. A rod model would be the next step, and the mismatch here is milder than a real tendon-driven robot's.</li>
+    <li>The cameras are perfect and triangulation is exact; a real setup adds pixel noise and calibration error.</li>
+    <li>The plan inherits the ideal model's errors and costs about a third of a second on interior targets: median settle <!--EVAL:interior,nominal,classical,1--> direct against <!--EVAL:interior,nominal,classical,4--> planned.</li>
+    <li>The outer cage over-states the reachable set near the base, where the set is a ring; the outline on the plane comes from the occupancy grid instead, which is why chapter one draws both.</li>
+    <li>An earlier version of this page said the marker chord varies by under 4 percent; computed here it is about 5 percent at flexibility ×1.0 and grows with flexibility, so the number is now computed, never typed.</li>
+    <li>Millimetres are a display convention, not a claim about any device.</li>
+  </ul>
+
+  <h2>Free play</h2>
+  <p class="caption">Everything unpinned: both robots, all toggles, the charts and the trial table, as on the main page.</p>
+  <div class="scene" data-scene="a4"></div>
+
+  <h2>How this page was built</h2>
+  <div class="prose">
+    <p>The simulator, sensing, planner, both controllers, the pretrained weights and the precomputed envelope are the version 3 code, loaded unchanged. The ensemble was trained by <span class="kv">node train/train.js</span> (about 45 minutes), the reachable envelope and grid by <span class="kv">node train/workspace.js</span>, the evaluation tables by <span class="kv">node train/eval.js</span> (about 6 minutes, <!--EVAL_DATE-->), all with fixed seeds. The numbers in the headline lines and the chapters are either read from that evaluation file at build time or computed in this browser on load; none is typed. Version 1 is kept unchanged at <a href="../v1.html">v1.html</a>.</p>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Planner off against planner on, <!--EVAL_TRIALS--> trials per cell</div>
+    <div class="panel-sub">Headless, the same protocol as the trial tables above. Settled out of 40, median settle time, mean steady-state error.</div>
+    <div class="table-scroll">
+    <table class="static-table">
+      <thead><tr><th>Targets</th><th>Condition</th><th>Controller</th><th>direct settled</th><th>direct settle</th><th>direct steady</th><th>planned settled</th><th>planned settle</th><th>planned steady</th></tr></thead>
+      <tbody><!--EVAL_ROWS--></tbody>
+    </table>
+    </div>
+  </div>
+
+  <footer>
+    <span>Bolgaç Gülen · September 2026 · variant 1</span>
+    <span>Simulation only. No hardware, no clinical anything.</span>
+    <span data-fps></span>
+  </footer>
+</div>
+<script>
+/*__UI__*/
+</script>
+</body>
+</html>

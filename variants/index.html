@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Five readings of three acts</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">continuum demo · five variants · one page · 2026-09-12</div>
+    <h1>Five readings of "three acts"</h1>
+    <p class="intro">
+      One instruction, five separate demos. Each variant below is a full page built on the version 3
+      simulation and its visual system, structured as three acts on the three answers given to the
+      questions about version 1. Every variant runs here in its own frame and also opens on its own.
+      A frame animates while any part of it is on screen and pauses when it is scrolled out; add
+      <span class="kv">#all</span> to the address to keep all five running for a stress test.
+    </p>
+  </header>
+  <nav class="chooser-nav"><a href="#v1">1 · Chapters</a><a href="#v2">2 · The three consequences of one camera, replayed then corrected</a><a href="#v3">3 · Sensing, model, control</a><a href="#v4">4 · Three experiments the reader can rerun</a><a href="#v5">5 · One scene, a three-stop walkthrough</a><span class="fps" data-fps>fps: waiting</span></nav>
+  <section class="variant" id="v1" data-n="1"><div class="vhead"><span class="vn">Variant 1</span><h2>Chapters: one act per question, one scene per act</h2><a href="1.html">open on its own</a><button class="cr-tour-btn" data-tour="1">Walkthrough</button></div><p class="blurb">The three questions become three chapters, each with its own scene, one control and one chart: the reachable set and its cross-section, fixed arc lengths under a moving viewpoint, and inverse kinematics above the feedback law.</p><iframe src="1.html" title="Variant 1: Chapters: one act per question, one scene per act" loading="eager"></iframe><div class="vstatus" data-status="1">loading</div></section>
+<section class="variant" id="v2" data-n="2"><div class="vhead"><span class="vn">Variant 2</span><h2>The three consequences of one camera, replayed then corrected</h2><a href="2.html">open on its own</a><button class="cr-tour-btn" data-tour="2">Walkthrough</button></div><p class="blurb">Each act reproduces a version 1 fault inside the current simulator behind one switch, "as in version 1 | as now", and measures both states: a point seen by one camera is a line, perspective and an unmodelled taper, the bending plane a local law picks.</p><iframe src="2.html" title="Variant 2: The three consequences of one camera, replayed then corrected" loading="eager"></iframe><div class="vstatus" data-status="2">loading</div></section>
+<section class="variant" id="v3" data-n="3"><div class="vhead"><span class="vn">Variant 3</span><h2>Sensing, model, control: the three layers</h2><a href="3.html">open on its own</a><button class="cr-tour-btn" data-tour="3">Walkthrough</button></div><p class="blurb">The page is the three layers of the build, each stating what it is allowed to know: what the cameras sense, what the geometric model assumes with its four invented effects, and what the control law does with both.</p><iframe src="3.html" title="Variant 3: Sensing, model, control: the three layers" loading="eager"></iframe><div class="vstatus" data-status="3">loading</div></section>
+<section class="variant" id="v4" data-n="4"><div class="vhead"><span class="vn">Variant 4</span><h2>Three experiments the reader can rerun</h2><a href="4.html">open on its own</a><button class="cr-tour-btn" data-tour="4">Walkthrough</button></div><p class="blurb">Each answer is a claim and each act is its test with a hypothesis box and a Run button: the boundary against inverse kinematics, chord and arc length over random poses, and the planner over ten seeded targets.</p><iframe src="4.html" title="Variant 4: Three experiments the reader can rerun" loading="eager"></iframe><div class="vstatus" data-status="4">loading</div></section>
+<section class="variant" id="v5" data-n="5"><div class="vhead"><span class="vn">Variant 5</span><h2>One scene, a three-stop walkthrough</h2><a href="5.html">open on its own</a><button class="cr-tour-btn" data-tour="5">Walkthrough</button></div><p class="blurb">One sticky scene, three stops; each stop pins one control and answers one question, with the walkthrough replacing the scripted demo.</p><iframe src="5.html" title="Variant 5: One scene, a three-stop walkthrough" loading="eager"></iframe><div class="vstatus" data-status="5">loading</div></section>
+  <footer>
+    <span>Bolgaç Gülen · September 2026 · variants under review</span>
+    <span>Simulation only. The main page is unchanged.</span>
+  </footer>
+</div>
+<script>
+// Chooser page: five variant iframes stacked; each animates while on screen and
+// pauses when scrolled out (postMessage to the child). The child reports its
+// height, its fps and asks the parent to scroll during its walkthrough.
+(function () {
+  'use strict';
+  const frames = new Map(); // n -> {iframe, section, status, fps, visible}
+  for (const sec of document.querySelectorAll('section.variant[data-n]')) {
+    const iframe = sec.querySelector('iframe');
+    if (!iframe) continue;
+    frames.set(sec.dataset.n, { iframe, sec, status: sec.querySelector('[data-status]'), fps: null, visible: false });
+  }
+  const all = location.hash.includes('all');
+  const post = (f, msg) => { try { f.iframe.contentWindow.postMessage(Object.assign({ cr: 1 }, msg), '*'); } catch (e) { /* frame not ready */ } };
+
+  window.addEventListener('message', (ev) => {
+    const d = ev.data;
+    if (!d || d.cr !== 1) return;
+    const f = frames.get(String(d.id));
+    if (!f) return;
+    if (d.type === 'height' && d.h > 200) f.iframe.style.height = Math.ceil(d.h + 4) + 'px';
+    if (d.type === 'ready') { f.status.textContent = 'running'; if (!f.visible && !all) post(f, { type: 'pause' }); }
+    if (d.type === 'fps') { f.fps = d.fps; f.status.textContent = (f.visible || all ? 'running · ' : 'paused · ') + d.fps + ' fps'; }
+    if (d.type === 'scrollTo') {
+      const top = f.iframe.getBoundingClientRect().top + window.scrollY + d.y;
+      window.scrollTo({ top: top - 24, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }
+  });
+
+  if (!all && typeof IntersectionObserver === 'function') {
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const f = [...frames.values()].find((x) => x.iframe === e.target);
+        if (!f) continue;
+        f.visible = e.isIntersecting;
+        post(f, { type: f.visible ? 'resume' : 'pause' });
+        if (f.status) f.status.textContent = (f.visible ? 'running' : 'paused') + (f.fps != null ? ' · ' + f.fps + ' fps' : '');
+      }
+    }, { threshold: 0, rootMargin: '0px' });
+    for (const f of frames.values()) io.observe(f.iframe);
+  } else {
+    for (const f of frames.values()) f.visible = true;
+  }
+
+  for (const b of document.querySelectorAll('button[data-tour]')) {
+    b.addEventListener('click', () => {
+      const f = frames.get(b.dataset.tour);
+      if (!f) return;
+      f.iframe.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      post(f, { type: 'tour', action: 'open' });
+    });
+  }
+
+  const fpsEl = document.querySelector('[data-fps]');
+  setInterval(() => {
+    const live = [...frames.entries()].filter(([, f]) => f.fps != null && (f.visible || all)).map(([n, f]) => n + ':' + f.fps);
+    if (fpsEl) fpsEl.textContent = live.length ? 'fps ' + live.join('  ') : 'fps: no frame in view';
+  }, 1000);
+})();
+
+</script>
+</body>
+</html>

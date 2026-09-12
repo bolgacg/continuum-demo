@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Do the three answers hold when you rerun them?</title>
+<!--CR_HEAD-->
+</head>
+<body data-variant="4">
+<div class="wrap" id="variant-4">
+
+  <header>
+    <div class="eyebrow">simulation study · version 3 · variant 4 of 5 · <!--BUILD_STAMP--></div>
+    <h1>Do the three answers hold when you rerun them?</h1>
+    <p class="intro">
+      Each answer given to the three questions about the first version of this simulation is a
+      claim, and each act here is that claim's test, run in the browser on the same code that
+      runs the robots. Press Run and the result is recomputed in front of you; nothing in the
+      result panels is typed. At the end you will know how closely the drawn outline matches
+      inverse kinematics, how much marker spacing varies in 3D against on screen, and how many
+      edge targets a feedback law loses that a plan reaches.
+    </p>
+    <ul class="cr-headlines">
+      <li><span>Is the drawn outline the reachable set?<small>outline against inverse kinematics on 400 random points of the plane, act one</small></span><b data-h="agree">press Run in act one</b></li>
+      <li><span>Does anything move along the robot?<small>3D chord against on-screen spacing over 500 random poses, act two</small></span><b data-h="chord">press Run in act two</b></li>
+      <li><span>Does a feedback law alone reach the edge of the workspace?<small>ten edge targets in the browser, act three; the 40-trial run says <!--EVAL:edge,nominal,classical,0--> against <!--EVAL:edge,nominal,classical,3--></small></span><b data-h="plan">press Run in act three</b></li>
+    </ul>
+    <div class="cr-byline"><span>Bolgaç Gülen · September 2026</span><a href="https://github.com/bolgacg/continuum-demo">source on GitHub</a><button data-tour-open>Restart the walkthrough</button></div>
+  </header>
+
+  <h2>Before the robot, five things</h2>
+  <ol class="primer">
+    <li>A continuum robot bends along its length instead of turning at joints. This one has two bending segments of fixed length, like two circle arcs joined end to end.</li>
+    <li>Four markers on the robot are seen by two fixed cameras. Each marker's 3D position is computed from the two images, which is called triangulation, and that is all either controller gets.</li>
+    <li>A controller is a rule that turns the gap between the tip and the target into a change of bend. The orange one uses the textbook model; the blue one learned from a simulator with lag, backlash, sag and drift added.</li>
+    <li>The reachable set is every point the tip can occupy without exceeding the bending limits. A target outside it cannot be reached by any controller.</li>
+    <li>Lengths on this page are a display convention: the model is dimensionless and drawn as if the robot were 180 mm long.</li>
+  </ol>
+  <p class="caption">Each act has a hypothesis box with three labelled lines, prediction, baseline and caveat, then a Run button; the verdict is written from the run.</p>
+  <div class="schematic" data-schematic><canvas width="920" height="690"></canvas><svg viewBox="0 0 920 690"></svg></div>
+  <p class="caption">The setup, drawn by the same renderer as every scene below: the base, the two segments, the four markers (filled at segment ends, hollow at midpoints), the two sensors, the target plane and the click ray that places a target on it.</p>
+
+  <details class="glossary" open>
+    <summary>Terms used on this page</summary>
+    <dl>
+      <dt>constant curvature</dt><dd>the assumption that each segment bends as one circular arc; four numbers then describe the whole robot, a curvature and a bending direction per segment</dd>
+      <dt>marker</dt><dd>one of four points on the robot that the cameras can see: the middle and end of each segment</dd>
+      <dt>chord</dt><dd>the straight-line distance between two neighbouring markers; the arc between them is fixed, the chord shortens as the arc bends</dd>
+      <dt>triangulation</dt><dd>computing a point's 3D position from its pixel in two cameras whose poses are known</dd>
+      <dt>inverse kinematics</dt><dd>finding the bend that puts the tip on a chosen point, solved here on the ideal model within 2 mm</dd>
+      <dt>occupancy grid</dt><dd>the reachable set stored as 6 mm cells, filled from 300,000 sampled tip positions; the outline on the plane is its slice</dd>
+      <dt>planner</dt><dd>solve the inverse kinematics first, then let the feedback law track the path to that solution</dd>
+      <dt>protocol</dt><dd>the trial rules shared by the page and the evaluation run: 6 s per target, settle under 5 mm held 0.8 s, steady state over the final second, fixed seeds</dd>
+      <dt>settle, steady state</dt><dd>settle: the first time the tip error stays under 5 mm for 0.8 s; steady state: the mean error over the final second</dd>
+      <dt>edge and interior targets</dt><dd>edge targets sit at 95 to 100 percent of the bending limits; interior ones at up to 85 percent</dd>
+    </dl>
+  </details>
+
+  <h2>The three questions this page answers</h2>
+  <div class="questions">
+    <p class="caption">Asked about version 1 on 29 August, quoted as written.</p>
+    <blockquote><span class="q">Q1</span>How did you determine the irregular boundary?</blockquote>
+    <blockquote><span class="q">Q2</span>How did you model your robot? Is the distance between each pair of joints variable? In practice, it is usually difficult to physically manufacture a continuum structure with continuously varying geometry.</blockquote>
+    <blockquote><span class="q">Q3</span>How did you solve the inverse kinematics of the robot?</blockquote>
+    <p class="caption">The answers given were: the boundary is the computed reachable set; nothing varies along the robot; the inverse kinematics is solved on the ideal model and tracked. Each is tested below.</p>
+  </div>
+  <ul class="refs">
+    <li>Webster and Jones, 2010, Design and kinematic modeling of constant curvature continuum robots: the constant-curvature arc, the geometry of every segment here.</li>
+    <li>Chaumette and Hutchinson, 2006, Visual servo control: the feedback law, resolved-rate servoing on a point feature.</li>
+    <li>Kuhnen, 2003, Modeling, identification and compensation of complex hysteretic nonlinearities: the play operator, the element the simulated backlash is built from.</li>
+  </ul>
+
+  <!-- ============================ audit one ============================ -->
+  <section class="act" data-act="1" id="act1">
+    <div class="act-eyebrow">Audit one · the boundary</div>
+    <h2 class="act-title">Outline against inverse kinematics</h2>
+    <p class="lede">This audit matters because a boundary that disagrees with the solver would make "beyond reach" in the trial table a guess. The claim under test is that the outline drawn on the target plane is the reachable set's cross-section. The test asks the inverse-kinematics solver about random points on that plane and compares its answer with the outline's.</p>
+    <div class="hyp">
+      <b>Prediction</b><span>the outline and the solver classify at least 95 percent of random points on this plane the same way.</span>
+      <b>Baseline</b><span>the outer cage's slice, the boundary anyone could draw from the envelope alone.</span>
+      <b>Caveat</b><span>the solver tolerates 2 mm and searches a 12,000-entry table; grid cells are 6 mm, so disagreements should sit on the boundary itself.</span>
+    </div>
+    <div class="scene" data-scene="a1"></div>
+    <p class="control"><button data-run="1" class="primary">Run: 400 points on the plane</button> <span class="hint">Each point is classified by the outline, by the cage, and by the solver. <span data-progress="1"></span></span></p>
+    <div class="panel">
+      <div class="panel-title">The plane from above, every tested point</div>
+      <div class="panel-sub">Points coloured by whether the outline and the solver agree; ringed where the solver says reachable; the outline itself drawn in grey.</div>
+      <canvas class="cr-chart" data-chart="scatter" width="944" height="420"></canvas>
+      <ul class="lines">
+        <li><b>You see</b>the target plane seen from above, with every tested point, coloured by agreement between the outline and the solver, and ringed where the solver reaches.</li>
+        <li><b>Read it</b>disagreements cluster on the boundary itself, where a 6 mm cell straddles the edge; a point deep inside or far outside never disagrees.</li>
+        <li><b>Take away</b>the outline is the solver's answer to within its resolution; the cage is not, near the base.</li>
+      </ul>
+    </div>
+    <div class="verdict">
+      <p class="opener" data-v="v1open">Not run yet.</p>
+      <p>Outline and inverse kinematics agree on <span class="num" data-v="agreeP">…</span> percent of <span class="num" data-v="agreeN">…</span> points at z = <span class="num" data-v="agreeZ">…</span>; the cage's slice agrees on <span class="num" data-v="cageP">…</span> percent.</p>
+    </div>
+    <p class="handover">The points were classified by a model whose geometry the next audit measures.</p>
+  </section>
+
+  <!-- ============================ audit two ============================ -->
+  <section class="act" data-act="2" id="act2">
+    <div class="act-eyebrow">Audit two · the geometry</div>
+    <h2 class="act-title">Chord and arc length over random poses</h2>
+    <p class="lede">This audit matters because "does the distance between joints vary" is answerable by measurement, not by assertion. The claim under test is that nothing moves along the robot. The test draws random configurations and measures, in each, the arc length, the straight-line chord between every neighbouring marker pair, and the same pair's spacing on each camera's screen.</p>
+    <div class="hyp">
+      <b>Prediction</b><span>arc length stays at 1.8 units in every pose; each pair's chord shortens by no more than the geometry allows, which is 1 minus sin(φ/2)/(φ/2) at the pair's bending limit φ, computed from the limits; on-screen spacing varies by more than a factor of two, since a pair pointing at the lens has no length on screen.</span>
+      <b>Baseline</b><span>the arc length, the manufactured quantity.</span>
+      <b>Caveat</b><span>the chord bound grows with flexibility, because an arc's chord shortens as the arc bends; this audit runs at the current setting, and 500 poses cannot reach the exact bound.</span>
+    </div>
+    <div class="scene" data-scene="a2"></div>
+    <p class="control"><button data-run="2" class="primary">Run: 500 random configurations</button> <span class="hint">The robot above steps through the sampled poses while the numbers are measured. <span data-progress="2"></span></span></p>
+    <div class="panel">
+      <div class="panel-title">Variation over random poses, one bar per quantity</div>
+      <div class="panel-sub">Each bar runs from the quantity's smallest to its largest value over the sampled poses, as a ratio to its smallest, on a logarithmic axis.</div>
+      <canvas class="cr-chart" data-chart="range" width="944" height="260"></canvas>
+      <ul class="lines">
+        <li><b>You see</b>one bar per quantity, from its smallest to its largest value over the poses: the arc length, three 3D chords, and the first pair's spacing on each camera.</li>
+        <li><b>Read it</b>bar length is variation; the arc length is a dot; the chords are short bars that end at their geometric bound; the on-screen bars are long.</li>
+        <li><b>Take away</b>nothing varies along the robot; the screen varies.</li>
+      </ul>
+    </div>
+    <div class="verdict">
+      <p class="opener" data-v="v2open">Not run yet.</p>
+      <p>Arc length <span class="num" data-v="arcRange">…</span>. The three chords shortened by at most <span class="num" data-v="chord1">…</span>, <span class="num" data-v="chord2">…</span> and <span class="num" data-v="chord3">…</span> percent of their arc lengths, against geometric bounds of <span class="num" data-v="bound1">…</span>, <span class="num" data-v="bound2">…</span> and <span class="num" data-v="bound3">…</span> percent. On the side camera the first pair's spacing ran from <span class="num" data-v="px1">…</span>; on the top camera from <span class="num" data-v="px2">…</span>.</p>
+    </div>
+    <p class="handover">With four fixed numbers to choose, the last audit asks who chooses them.</p>
+  </section>
+
+  <!-- ============================ audit three ============================ -->
+  <section class="act" data-act="3" id="act3">
+    <div class="act-eyebrow">Audit three · the planner</div>
+    <h2 class="act-title">Ten edge targets, direct against planned</h2>
+    <p class="lede">This audit matters because the largest claim on the page, <!--EVAL:edge,nominal,classical,0--> against <!--EVAL:edge,nominal,classical,3--> edge targets for the classical law, should be reproducible without leaving the browser. The claim under test is that a feedback law alone loses edge targets a plan above it reaches. The test runs the evaluation protocol on its first ten seeds, both controllers, with and without the plan.</p>
+    <div class="hyp">
+      <b>Prediction</b><span>planned, both laws settle every target; direct, the classical law loses some and stalls tens of millimetres short.</span>
+      <b>Baseline</b><span>the direct law.</span>
+      <b>Caveat</b><span>ten trials, the first ten seeds of the 40-trial protocol; the full run is the table at the bottom, <span class="kv">node train/eval.js</span>.</span>
+    </div>
+    <div class="scene" data-scene="a3"></div>
+    <p class="control"><button data-run="3" class="primary">Run: ten targets, four conditions</button> <span class="hint">The scene above replays the targets while the protocol runs headless in the page. <span data-progress="3"></span></span></p>
+    <div class="panel">
+      <div class="panel-title">Final-second error per trial</div>
+      <div class="panel-sub">One dot per trial; its height is the mean tip error over the final second; the hairline is the 5 mm settle band; dots above the top edge are marked.</div>
+      <canvas class="cr-chart" data-chart="dots" width="944" height="260"></canvas>
+      <ul class="lines">
+        <li><b>You see</b>one dot per trial in four columns: each controller with the plan off and with it on.</li>
+        <li><b>Read it</b>dots above the band are stalls; a column of dots on the band is a controller that reached everything.</li>
+        <li><b>Take away</b>the plan removes the stalls.</li>
+      </ul>
+    </div>
+    <div class="verdict">
+      <p class="opener" data-v="v3open">Not run yet.</p>
+      <p>Direct, the classical law settled <span class="num" data-v="cd">…</span> and the learned law <span class="num" data-v="ld">…</span> of 10; planned, <span class="num" data-v="cp">…</span> and <span class="num" data-v="lp">…</span>. The 40-trial run gives <span class="num"><!--EVAL:edge,nominal,classical,0--></span>, <span class="num"><!--EVAL:edge,nominal,learned,0--></span>, <span class="num"><!--EVAL:edge,nominal,classical,3--></span> and <span class="num"><!--EVAL:edge,nominal,learned,3--></span>.</p>
+    </div>
+    <p class="handover">The trained law in that run has a card; it follows.</p>
+  </section>
+
+  <h2>Model card, the one thing on this page that was trained</h2>
+  <div data-modelcard></div>
+  <div class="cr-card"><dt>Scored on</dt><dd>the <!--EVAL_TRIALS-->-trial closed-loop tables below. Against the classical law: on edge targets, direct, <!--EVAL:edge,nominal,learned,2--> steady state against <!--EVAL:edge,nominal,classical,2-->; under drift on interior targets, direct, <!--EVAL:interior,drift,learned,0--> settled against <!--EVAL:interior,drift,classical,0-->.</dd>
+  <dt>Verdict</dt><dd>ahead of the classical law on edge targets and under payload, level under payload with drift, slightly behind under drift alone. The extrapolation flag fired on 0 percent of steps in every table cell, so those runs do not test it.</dd></div>
+
+  <h2>What this page gets wrong</h2>
+  <ul class="failpane">
+    <li>Ten trials in the browser check the protocol; they do not replace 40. The two are shown side by side and can disagree by a trial or two.</li>
+    <li>Audit one tests the outline against the solver, not against the truth: both use the ideal geometry, so an error shared by both would pass.</li>
+    <li>Audit two measures the model's geometry, which is fixed by construction; it cannot detect a manufacturing defect the model does not contain.</li>
+    <li>Direct, the learned law still settles only <!--EVAL:edge,nominal,learned,0--> of the edge targets; the plan, not the learning, is what reaches all of them.</li>
+    <li>The truth model is invented and the cameras are perfect; every number here is a floor no real setup reaches.</li>
+    <li>An earlier version of this page said the marker chord varies by under 4 percent; audit two measures it instead of asserting it.</li>
+    <li>Millimetres are a display convention, not a claim about any device.</li>
+  </ul>
+
+  <h2>Free play</h2>
+  <p class="caption">Everything unpinned: both robots, all toggles, the charts and the trial table, as on the main page.</p>
+  <div class="scene" data-scene="a4"></div>
+
+  <h2>How this page was built</h2>
+  <div class="prose">
+    <p>The simulator, sensing, planner, both controllers, the pretrained weights and the precomputed envelope are the version 3 code, loaded unchanged. The audits run on that code in this browser: audit three uses the same trial routine that wrote the evaluation file (<!--EVAL_DATE-->), with the same seeds, 31000 plus seven times the trial number. Every number on this page is read from that file at build time or computed here; none is typed. Version 1 is kept unchanged at <a href="../v1.html">v1.html</a>.</p>
+  </div>
+  <div class="panel">
+    <div class="panel-title">Planner off against planner on, <!--EVAL_TRIALS--> trials per cell</div>
+    <div class="panel-sub">Headless, the same protocol as the audits above. Settled out of 40, median settle time, mean steady-state error.</div>
+    <div class="table-scroll">
+    <table class="static-table">
+      <thead><tr><th>Targets</th><th>Condition</th><th>Controller</th><th>direct settled</th><th>direct settle</th><th>direct steady</th><th>planned settled</th><th>planned settle</th><th>planned steady</th></tr></thead>
+      <tbody><!--EVAL_ROWS--></tbody>
+    </table>
+    </div>
+  </div>
+
+  <footer>
+    <span>Bolgaç Gülen · September 2026 · variant 4</span>
+    <span>Simulation only. No hardware, no clinical anything.</span>
+    <span data-fps></span>
+  </footer>
+</div>
+<script>
+/*__UI__*/
+</script>
+</body>
+</html>
