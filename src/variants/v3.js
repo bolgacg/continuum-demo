@@ -2,9 +2,9 @@
 (function () {
   'use strict';
   if (!document.getElementById('variant-3')) return;
-  const { kit, charts2, pcc, truth, workspace, camera, v3, spotlight } = CR;
+  const { kit, charts2, pcc, truth, workspace, camera, v3, spotlight, scene, hyst } = CR;
   const A = kit.assets();
-  const { MM } = kit.CONST;
+  const { MM, DT } = kit.CONST;
   const q = (s) => document.querySelector(s);
   const setV = (k, v) => { for (const el of document.querySelectorAll('[data-v="' + k + '"]')) el.textContent = v; };
   window.CR_EMBED = kit.embed({ id: '3' });
@@ -12,8 +12,8 @@
   function randomQ(rng, lo, hi) { const out = []; for (let i = 0; i < 2; i++) { const a = rng() * 2 * Math.PI, k = (lo + (hi - lo) * Math.sqrt(rng())) * pcc.KMAX[i]; out.push(k * Math.cos(a), k * Math.sin(a)); } return out; }
 
   // ================= layer one: sensing =================
-  const a1 = kit.createScene(q('[data-scene="a1"]'), { id: 'v3-a1', views: ['inspector', 'side'], toolbar: false, charts: false, table: 6, sensors: true,
-    clickHint: 'click inside the outline to place a target' });
+  const a1 = kit.createScene(q('[data-scene="a1"]'), { id: 'v3-a1', views: ['inspector', 'side'], toolbar: false, charts: false, table: 6,
+    rejectBeyond: true, clickHint: 'click in the band between the two outlines' });
   const rayCanvas = q('[data-chart="ray"]');
   let lastRay = null; // {origin, dir}
   function drawRay() {
@@ -33,7 +33,6 @@
       if (inS && !inside) { inside = true; start = s; }
       if ((!inS || s + step > smax) && inside) { inside = false; ctx.fillStyle = 'rgba(138,143,136,0.45)'; ctx.fillRect(px(start), y - 14, Math.max(2, px(s) - px(start)), 28); }
     }
-    // plane cut
     const hit = camera.rayPlaneZ(lastRay.origin, lastRay.dir, a1.sim.st.planeY);
     if (hit) { const s = v3.norm(v3.sub(hit, lastRay.origin)); ctx.strokeStyle = '#52514e'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(px(s), 8); ctx.lineTo(px(s), H - 22); ctx.stroke(); ctx.setLineDash([]); ctx.fillStyle = '#52514e'; ctx.fillText('plane cuts the ray here', px(s) + 5, 16); }
     ctx.fillStyle = '#898781';
@@ -41,14 +40,34 @@
     ctx.fillText(lastRay.synthetic ? 'a default ray until you click' : 'the last click ray', PAD.l, H - 6 - 18 - 14);
     ctx.fillText('camera', px(s0) - 36, y + 4);
   }
+  // agreement between the drawn outline (grid) and the solver, and how far each disagreeing point is from the outline
   function agreement(h, n) {
-    const g = A.geometry(pcc.flex()); const rng = CR.makeRng(9); let agree = 0;
-    for (let i = 0; i < n; i++) { const p = [-1.7 + 3.4 * rng(), -1.7 + 3.4 * rng(), h]; if (workspace.gridContains(g.grid, p) === A.planner.solveIK(p, [0, 0, 0, 0]).reachable) agree++; }
-    return { p: 100 * agree / n, n };
+    const g = A.geometry(pcc.flex()); const rng = CR.makeRng(9); let agree = 0; let maxEdge = 0; let dis = 0;
+    for (let i = 0; i < n; i++) {
+      const p = [-1.7 + 3.4 * rng(), -1.7 + 3.4 * rng(), h];
+      const inG = workspace.gridContains(g.grid, p);
+      if (inG === A.planner.solveIK(p, [0, 0, 0, 0]).reachable) { agree++; continue; }
+      dis++;
+      let edge = Infinity;
+      for (let r = 0.01; r <= 0.3 && edge === Infinity; r += 0.01) for (let a = 0; a < 48; a++) {
+        const qq = [p[0] + r * Math.cos(a * Math.PI / 24), p[1] + r * Math.sin(a * Math.PI / 24), h];
+        if (workspace.gridContains(g.grid, qq) !== inG) { edge = r; break; }
+      }
+      maxEdge = Math.max(maxEdge, edge);
+    }
+    return { p: 100 * agree / n, n, dis, maxEdge };
   }
-  let agreeTimer = null;
-  function refreshAgreement() { const r = agreement(a1.sim.st.planeY, 300); setV('agreeP', r.p.toFixed(1)); setV('agreeN', String(r.n)); const h = q('[data-h="agree"]'); if (h) h.textContent = r.p.toFixed(0) + ' percent of ' + r.n + ' points'; }
+  let agreeTimer = null, headlineSet = false;
+  function refreshAgreement() {
+    const r = agreement(a1.sim.st.planeY, 300);
+    setV('agreeP', r.p.toFixed(1)); setV('agreeN', String(r.n));
+    setV('disN', String(r.dis)); setV('disMax', r.dis ? (r.maxEdge * MM).toFixed(0) + ' mm' : '0 mm');
+    const h = q('[data-h="agree"]'); if (h && !headlineSet) { h.textContent = r.p.toFixed(0) + ' percent of ' + r.n + ' points'; headlineSet = true; }
+  }
   a1.sim.on('plane', () => { drawRay(); clearTimeout(agreeTimer); agreeTimer = setTimeout(refreshAgreement, 250); });
+  a1.on('rejected', (p) => setV('lastVerdict', p ? 'beyond reach at z = ' + (p[2] * MM).toFixed(0) + ' mm, so it was not run' : 'off the plane, so it was not run'));
+  // moving the plane abandons any trial: the cards go back to idle
+  a1.sim.on('plane', () => { for (const k of ['ro-c-state', 'ro-l-state']) { const el = a1.$(k); if (el) el.textContent = 'idle'; } for (const k of ['ro-c-settle', 'ro-l-settle']) { const el = a1.$(k); if (el) el.textContent = '–'; } });
   a1.sim.on('target', ({ target, reachable }) => {
     if (a1.sim.st.lastRay) lastRay = { origin: a1.sim.st.lastRay.origin, dir: a1.sim.st.lastRay.dir };
     drawRay();
@@ -56,65 +75,148 @@
   });
   drawRay(); refreshAgreement();
 
-  // ================= layer two: model =================
-  const a2 = kit.createScene(q('[data-scene="a2"]'), { id: 'v3-a2', views: ['inspector', 'side'], toolbar: ['payload'], charts: false, table: false, tendons: true, cages: false, plane: false, clickToPlace: false, preset: 'side', dist: 2.6 });
-  const lean = kit.T3([1.5, 0.35, 0.9, 0.2]);
-  a2.demoTarget(lean);
-  const sagCanvas = q('[data-chart="sag"]');
-  const P = truth.PARAMS;
-  function sagCurve(payload) {
-    const pts = [];
-    for (let k = 0; k <= pcc.KMAX[0]; k += pcc.KMAX[0] / 40) {
-      const qq = [k, 0, k * 0.6, 0];
-      const ideal = pcc.tip3(qq), sagged = pcc.tip3(truth.applyStatic(qq, payload));
-      pts.push([(k * pcc.SEG_LEN[0] * 180) / Math.PI, v3.norm(v3.sub(sagged, ideal)) * MM]);
-    }
-    return pts;
-  }
-  const sag0 = sagCurve(0), sag1 = sagCurve(1);
-  function drawSag() {
-    const r = a2.sim.robots.classical;
-    const qc = r ? r.sim.qCmd : [0, 0, 0, 0];
-    const leanDeg = (Math.hypot(qc[0], qc[1]) * pcc.SEG_LEN[0] * 180) / Math.PI;
-    charts2.line(sagCanvas, {
-      series: [{ name: 'no payload', color: '#9a9d97', points: sag0 }, { name: 'full payload', color: '#52514e', points: sag1 }],
-      x: { label: 'lean of segment one, degrees', min: 0, max: sag1[sag1.length - 1][0] }, y: { label: 'tip droop, mm', min: 0 },
-      marker: { x: leanDeg, label: 'now, payload ' + (r ? r.sim.payload.toFixed(1) : '0') },
-    });
-  }
-  let sagTick = 0;
-  a2.on('draw', () => { if (++sagTick % 6 === 0) drawSag(); });
-  drawSag();
-  { const full = sag1[sag1.length - 1][1]; const h = q('[data-h="sag"]'); if (h) h.textContent = full.toFixed(0) + ' mm at ' + sag1[sag1.length - 1][0].toFixed(0) + ' degrees'; }
+  // ================= layer two: model, and the backlash loop =================
   // chord spread and arc length
   {
-    const rng = CR.makeRng(4); let mn = Infinity, mx = -Infinity, sum = 0; const n = 300;
-    for (let i = 0; i < n; i++) { const m = pcc.markers3(randomQ(rng, 0, 1)); const d = v3.norm(v3.sub(m[0], m[1])); mn = Math.min(mn, d); mx = Math.max(mx, d); sum += d; }
-    setV('chordP', (((mx - mn) / (sum / n)) * 100).toFixed(1));
+    // the first pair (segment one's midpoint and end) spans half of segment one's arc;
+    // its chord can only be shorter than that arc, so the figure is the largest shortening
+    const rng = CR.makeRng(4); let mn = Infinity; const n = 300, arcPair = 0.5 * pcc.SEG_LEN[0];
+    for (let i = 0; i < n; i++) { const m = pcc.markers3(randomQ(rng, 0, 1)); mn = Math.min(mn, v3.norm(v3.sub(m[0], m[1]))); }
+    setV('chordP', (((arcPair - mn) / arcPair) * 100).toFixed(2));
     setV('arc', (pcc.SEG_LEN[0] + pcc.SEG_LEN[1]).toFixed(4));
   }
+  const P = truth.PARAMS;
   // the coefficient table, read from the truth model itself
   {
     const rows = [
       ['lag', 'first-order lag on tendon displacement, with a rate limit', 'lagTau, rateMaxK', P.lagTau + ' s, ' + P.rateMaxK + ' /s'],
-      ['backlash', 'play operator per tendon (the Prandtl-Ishlinskii element)', 'backlashK', P.backlashK + ' curvature'],
+      ['backlash', 'play operator per tendon (the Prandtl-Ishlinskii element)', 'backlashK', 'half-width ' + P.backlashK + ' curvature, ' + ((P.backlashK * pcc.SEG_LEN[0] * 180) / Math.PI).toFixed(2) + ' degrees of bend in segment one'],
       ['sag', 'curvature biased toward gravity at each segment midpoint, scaled by payload', 'droopSelf, droopLoad', P.droopSelf.join(', ') + '; ' + P.droopLoad.join(', ')],
       ['coupling', 'a share of segment-one curvature leaking into segment two', 'coupling', String(P.coupling)],
       ['drift', 'slow creep plus a random walk on each tendon, capped', 'driftCreepK, driftWalkK, driftMaxK', P.driftCreepK + ', ' + P.driftWalkK + ', ' + P.driftMaxK],
     ];
-    q('[data-coef] tbody').innerHTML = rows.map((r) => '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td><td>' + r[3] + ' <span class="pill">typed by the author</span></td></tr>').join('');
+    q('[data-coef] tbody').innerHTML = rows.map((r) => '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] + '</td><td>' + r[3] + '</td></tr>').join('');
   }
+
+  // The loops are computed once, on load, by the same sweep the animation runs.
+  const deg = (k) => (k * pcc.SEG_LEN[0] * 180) / Math.PI;
+  const loopPts = (pts) => pts.map(([k, y]) => [deg(k), y * MM]);
+  const MODES = ['no compensation', 'inverse play', 'play and lag'];
+  const hy = { est: null, tau: null, loops: null, gaps: null };
+  const filterFor = (mode) => mode === 1 ? hyst.createCompensator(hy.est).filter : mode === 2 ? hyst.createLeadCompensator(hy.est, hy.tau).filter : null;
+  function computeLoops() {
+    const w = P.backlashK;
+    hy.est = hyst.runIdentification(w, 4141).wEstK;
+    hy.tau = hyst.identifyLag(4141).tau;
+    const run = (mode, sp) => hyst.sweepLoop(w, mode === 0 ? null : filterFor(mode), sp);
+    const L = [0, 1].map((sp) => [0, 1, 2].map((m) => run(m, sp)));
+    const idealCurve = (pts) => { const m = new Map(); for (const [x, y] of loopPts(pts)) m.set(x.toFixed(1), [x, y]); return [...m.values()].sort((a, b) => a[0] - b[0]); };
+    hy.loops = L.map((row) => ({ modes: row.map((r) => loopPts(r.points)), ideal: idealCurve(row[0].ideal) }));
+    hy.gaps = L.map((row) => row.map((r) => r.gapMean * MM));
+    { const r = L[0][2]; let sum = 0; for (let i = 0; i < r.points.length; i++) sum += r.points[i][1] - r.ideal[i][1]; setV('leadOffset', (Math.abs(sum / r.points.length) * MM).toFixed(1) + ' mm'); }
+    const mm = (x) => x.toFixed(x < 1 ? 2 : 1) + ' mm';
+    const bendDeg = (k) => deg(k).toFixed(2) + ' degrees';
+    setV('estW', bendDeg(hy.est)); setV('trueW', bendDeg(w));
+    setV('estTau', hy.tau.toFixed(4) + ' s'); setV('trueTau', P.lagTau.toFixed(2) + ' s');
+    setV('gapOff', mm(hy.gaps[0][0])); setV('gapOn', mm(hy.gaps[0][1])); setV('gapLead', mm(hy.gaps[0][2]));
+    setV('gapOffFast', mm(hy.gaps[1][0])); setV('gapOnFast', mm(hy.gaps[1][1])); setV('gapLeadFast', mm(hy.gaps[1][2]));
+    const h = q('[data-h="loop"]'); if (h) h.textContent = mm(hy.gaps[0][0]) + ' uncompensated, ' + mm(hy.gaps[0][2]) + ' compensated';
+    showNumbers();
+  }
+  function showNumbers() {
+    if (!hy.gaps) return;
+    const g = hy.gaps[live.speedIdx], mm = (x) => x.toFixed(x < 1 ? 2 : 1) + ' mm';
+    q('[data-hy="numbers"]').textContent = 'Mean gap, ' + (live.speedIdx ? 'fast' : 'slow') + ' sweep: ' +
+      mm(g[0]) + ' with no compensation, ' + mm(g[1]) + ' with the inverse play, ' + mm(g[2]) + ' with play and lag inverted.';
+  }
+
+  // the live sweep: one private simulator, commanded open loop
+  const view = q('[data-hy="view"]'), loopCv = q('[data-chart="loop"]');
+  const VW = 460, VH = 345;
+  const dpr = window.devicePixelRatio || 1;
+  view.width = VW * dpr; view.height = VH * dpr;
+  const vctx = view.getContext('2d'); vctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const viewCam = camera.orbitCamera(camera.PRESETS.side.az, 0.12, VW, VH, 2.1);
+  const S = hyst.SWEEP;
+  const live = { speedIdx: 0, mode: 1, t: 0, sim: null, visible: true };
+  function resetLive() {
+    live.sim = truth.createTruth(4141);
+    live.sim.reset([S.qBase[0], S.qBase[1] - S.amp, S.qBase[2], S.qBase[3]]);
+    live.t = 0;
+    live.sim.tendonFilter = hy.est != null ? filterFor(live.mode) : null;
+  }
+  function kAt(t) {
+    const v = S.speeds[live.speedIdx], P4 = (4 * S.amp) / v, a = (t % P4) * v;
+    return S.qBase[1] + (a < 2 * S.amp ? a - S.amp : 3 * S.amp - a);
+  }
+  function drawLive() {
+    const s = live.sim;
+    scene.draw(vctx, { W: VW, H: VH, cam: viewCam, robots: [{ sim: s, accent: kit.ACCENT.classical }], target: null,
+      plane: { y: 0, show: false }, section: null, volume: { mesh: null, show: false }, trainVolume: { mesh: null }, sensors: null,
+      label: 'SIDE VIEW, ZOOMED · ' + (live.speedIdx ? 'FAST' : 'SLOW') + ' SWEEP · ' + MODES[live.mode].toUpperCase(), t: live.t, layerKey: 'v3/hy-view' });
+    const bb = pcc.backbone(s.qCmd, 14).map((p) => viewCam.project(p)).filter(Boolean);
+    vctx.save(); vctx.strokeStyle = 'rgba(232,234,230,0.7)'; vctx.lineWidth = 1.5; vctx.setLineDash([5, 4]);
+    vctx.beginPath(); bb.forEach((p, i) => (i ? vctx.lineTo(p[0], p[1]) : vctx.moveTo(p[0], p[1]))); vctx.stroke(); vctx.restore();
+  }
+  const MODE_COLOR = ['#8a8f88', '#d95926', '#1d7a6a'];
+  function drawLoop() {
+    if (!hy.loops) return;
+    const L = hy.loops[live.speedIdx];
+    const all = L.modes[0].concat(L.ideal);
+    const ys = all.map((p) => p[1]);
+    const series = [{ name: '', color: live.mode === 0 ? MODE_COLOR[0] : '#c9ccc6', points: L.modes[0], width: live.mode === 0 ? 1.8 : 1.4 }];
+    if (live.mode > 0) series.push({ name: '', color: MODE_COLOR[live.mode], points: L.modes[live.mode], width: 2 });
+    series.push({ name: '', color: '#1f1e1c', points: L.ideal, dashed: true, width: 1.4 });
+    charts2.line(loopCv, {
+      series, x: { label: 'commanded bend of segment one, degrees' },
+      y: { label: 'tip sideways, mm', min: Math.floor(Math.min(...ys) / 10) * 10, max: Math.ceil(Math.max(...ys) / 10) * 10 },
+      marker: { x: deg(live.sim.qCmd[1]) },
+    });
+  }
+  let loopTick = 0, prevT = null;
+  function frame(now) {
+    if (prevT == null) prevT = now;
+    const dt = Math.min(0.1, (now - prevT) / 1000); prevT = now;
+    if (live.visible && live.sim) {
+      let acc = dt;
+      while (acc >= DT) { live.t += DT; live.sim.setCommand([S.qBase[0], kAt(live.t), S.qBase[2], S.qBase[3]]); live.sim.step(DT); acc -= DT; }
+      drawLive();
+      if (++loopTick % 4 === 0) drawLoop();
+    }
+    requestAnimationFrame(frame);
+  }
+  if (typeof IntersectionObserver === 'function') new IntersectionObserver((e) => { live.visible = e.some((x) => x.isIntersecting); }, { rootMargin: '120px' }).observe(view);
+  const segButtons = (key, attr, onPick) => { for (const b of document.querySelectorAll('[data-hy="' + key + '"] button')) b.addEventListener('click', () => {
+    for (const x of document.querySelectorAll('[data-hy="' + key + '"] button')) x.classList.toggle('on', x === b);
+    onPick(Number(b.dataset[attr]));
+  }); };
+  segButtons('mode', 'mode', (m) => { live.mode = m; live.sim.tendonFilter = hy.est != null ? filterFor(m) : null; drawLoop(); });
+  segButtons('speed', 'speed', (sp) => { live.speedIdx = sp; resetLive(); drawLoop(); showNumbers(); });
+  resetLive(); drawLive();
+  requestAnimationFrame(frame);
+  setTimeout(() => { computeLoops(); resetLive(); drawLoop(); }, 60);
 
   // ================= layer three: control =================
   const a3 = kit.createScene(q('[data-scene="a3"]'), { id: 'v3-a3', views: ['inspector', 'side'], toolbar: ['plan'], charts: false, table: 6, clickToPlace: false });
   const hook = kit.T3(kit.TQ.hook);
   function runHook() { a3.sim.reset(); a3.demoTarget(hook); a3.note('running the target under the base, planner ' + (a3.sim.st.usePlan ? 'on' : 'off')); }
   a3.sim.on('event', (e) => { if (/^plan/.test(e.label)) setTimeout(runHook, 50); });
-  a3.sim.on('trial', (row) => {
-    if (!row.classical) return;
-    if (!a3.sim.st.usePlan) setV('stall', row.classical.settle != null ? 'settled (' + row.classical.settle.toFixed(2) + ' s)' : row.classical.steady.toFixed(1) + ' mm');
-    else setV('plannedSettle', row.classical.settle != null ? row.classical.settle.toFixed(2) + ' s' : 'did not settle');
-  });
+  // the verdict's two numbers come from the same target run headless, planner off then on
+  function headlessHook(usePlan) {
+    const sim = kit.createSim({ robots: ['classical'] });
+    sim.st.usePlan = usePlan;
+    let row = null;
+    sim.on('trial', (r) => { row = r; });
+    sim.setPlaneY(hook[2], false);
+    sim.startTrial(hook);
+    for (let i = 0; i < Math.round(kit.CONST.TRIAL_S / DT) + 2 && !row; i++) sim.step();
+    return row && row.classical;
+  }
+  setTimeout(() => {
+    const off = headlessHook(false), on = headlessHook(true);
+    if (off) setV('stall', off.settle != null ? 'settled (' + off.settle.toFixed(2) + ' s)' : off.steady.toFixed(1) + ' mm');
+    if (on) setV('plannedSettle', on.settle != null ? on.settle.toFixed(2) + ' s' : 'did not settle');
+  }, 200);
   q('[data-run="hook"]').addEventListener('click', runHook);
   a3.setPlan(false);
   setTimeout(runHook, 400);
@@ -128,26 +230,23 @@
         { label: 'learned direct', value: n(l[0]), color: '#2a78d6', light: true }, { label: 'learned planned', value: n(l[1]), color: '#2a78d6' },
       ] };
     });
-    charts2.bars(cv, { groups, y: { max: 40 }, valueLabel: (v) => String(v) });
+    charts2.bars(cv, { groups, y: { max: 40 }, valueLabel: (v) => String(v), legend: [
+      { label: 'classical, direct', color: '#eb6834', light: true }, { label: 'classical, planned', color: '#eb6834' },
+      { label: 'learned, direct', color: '#2a78d6', light: true }, { label: 'learned, planned', color: '#2a78d6' },
+    ] });
   }
 
   // ================= model card, free play, tour =================
-  q('[data-modelcard]').innerHTML = kit.modelCard();
-  kit.createScene(q('[data-scene="a4"]'), { id: 'v3-free', charts: true, table: 10 });
-  setInterval(() => { const el = q('[data-fps]'); if (el) el.textContent = kit.ticker().fps() + ' fps'; }, 1000);
+  q('[data-modelcard]').innerHTML = kit.modelCard().replace('</dl>', q('#card-extra').innerHTML + '</dl>');
+  const fp = q('details.freeplay');
+  let freeScene = null;
+  fp.addEventListener('toggle', () => { if (fp.open && !freeScene) freeScene = kit.createScene(q('[data-scene="a4"]'), { id: 'v3-free', charts: true, table: 10 }); });
   window.CR_TOUR = spotlight.createTour([
-    { target: 'header h1', title: 'A geometric model', body: 'The controller on this page is built on a geometric model. The page is its three layers: what the cameras sense, what the model assumes, what the control law does with both. Each layer says what it is allowed to know.' },
-    { target: '[data-schematic]', title: 'What the cameras see', body: 'Two fixed sensors, four markers, a target plane, and the click ray that a click makes.', place: 'below' },
-    { target: '.questions', title: 'Their questions', body: 'Three questions, plus the later one: geometric model, or some other type. Layer two answers it directly.' },
-    { target: '[data-act="1"] .knows', title: 'Layer one, what it knows', body: 'Pixels in two calibrated cameras, and nothing about the robot\'s shape. Everything the controllers get comes through here.' },
-    { target: '[data-scene="a1"] [data-cr="plane"]', title: 'Layer one, the slider', body: 'Move the plane through the base and watch the ray\'s shaded stretches split: near the base the reachable set is a ring.' },
-    { target: '[data-scene="a2"] [data-cr="tgl-tendons"], [data-scene="a2"] .feeds', title: 'Layer two, the tendons', body: 'Three tendons per segment at a fixed radius, drawn as they are. The geometry is fixed; the truth model adds four effects on top of it.' },
-    { target: '[data-scene="a2"] [data-cr="tgl-payload"]', title: 'Layer two, the payload', body: 'Flip it and the marker climbs the sag curve: a rule the ideal model does not contain, with a coefficient the author typed.' },
-    { target: '[data-coef]', title: 'Layer two, the coefficients', body: 'Every one of the four effects, its form, and its typed value. This is the honest answer to "geometric or some other type": geometric, with invented additions.', place: 'below' },
-    { target: '[data-scene="a3"] [data-cr="tgl-plan"]', title: 'Layer three, the switch', body: 'Planner off: the feedback law alone chases a target curled under the base and parks in the wrong bending plane. Planner on: the inverse kinematics is solved on the model first.' },
-    { target: '[data-chart="bars"]', title: 'Layer three, the bars', body: 'Light bars are the law alone, solid bars the same law tracking a plan; the gap is the plan. Forty edge targets per bar.', place: 'below' },
-    { target: '[data-modelcard]', title: 'The model card', body: 'The blue controller is the one trained thing on this page.', place: 'below' },
-    { target: '.failpane', title: 'What this page gets wrong', body: 'Invented coefficients, perfect cameras, a plan that costs a third of a second, and a corrected number from an earlier version.', place: 'below' },
-  ], { autoOpenOnce: true, storageKey: 'cr_tour_v3', button: '[data-tour-open]' });
+    { target: 'header .intro', title: 'The answer first', body: 'A geometric model: two constant-curvature arcs of fixed length, with lag, backlash, sag and drift added on top.' },
+    { target: '[data-chart="loop"]', title: 'The backlash loop', body: 'One bend swept with no feedback. Grey is the loop without compensation; orange adds the inverse play, green inverts the lag as well. Both were identified from the cameras.', place: 'below' },
+    { target: '[data-hy="speed"]', title: 'Faster', body: 'Three times faster, the inverse play leaves more, because what it leaves is the lag, which depends on speed; inverting the lag too closes it.' },
+    { target: '[data-scene="a3"] [data-cr="tgl-plan"]', title: 'Inverse kinematics', body: 'Planner off: the feedback law alone stops short of a target under the base. Planner on: the inverse kinematics is solved on the model first and the law tracks it.' },
+    { target: '.failpane', title: 'What this page gets wrong', body: 'Invented coefficients, one idealised play operator, a lag that inverts cleanly only because the simulator is exactly first order, perfect cameras.', place: 'below' },
+  ], { autoOpenOnce: false, storageKey: 'cr_tour_v3', button: '[data-tour-open]' });
   window.CR_VARIANT_READY = '3';
 })();

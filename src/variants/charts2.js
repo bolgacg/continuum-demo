@@ -29,7 +29,7 @@
     for (let v = t0; v <= max + 1e-9; v += step) out.push(+v.toFixed(10));
     return out;
   }
-  function fmt(v) { return Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/\.?0+$/, ''); }
+  function fmt(v) { if (Number.isInteger(+v.toFixed(9))) return String(Math.round(v)); return Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/\.?0+$/, ''); }
 
   // Line chart. o = { series:[{name, color, points:[[x,y]], dashed?}], x:{label,min,max}, y:{label,min,max,log?}, marker:{x,label}, hairline:{y,label} }
   function line(cv, o) {
@@ -117,12 +117,13 @@
     ctx.font = '600 11px system-ui, sans-serif';
     for (const l of labels) { ctx.fillStyle = l.color; ctx.fillText(l.name, W - PAD.r + 6, l.y + 3); }
     ctx.font = MONO;
+    return { ctx, px, py, W, H, PAD };
   }
 
   // Grouped bars. o = { groups:[{label, bars:[{label, value, color, light}]}], y:{max,label}, valueLabel:fn }
   function bars(cv, o) {
     const { ctx, W, H } = prep(cv);
-    const PAD = { l: 44, r: 14, t: 16, b: 34 };
+    const PAD = { l: 44, r: 14, t: o.legend ? 46 : 16, b: 34 };
     const ymax = (o.y && o.y.max) || Math.max(...o.groups.flatMap((g) => g.bars.map((b) => b.value)));
     const py = (v) => PAD.t + (1 - v / ymax) * (H - PAD.t - PAD.b);
     ctx.fillStyle = MUTED; ctx.textAlign = 'right';
@@ -142,6 +143,15 @@
       ctx.fillStyle = MUTED; ctx.fillText(g.label, PAD.l + gi * gw + gw / 2, H - 10);
     });
     ctx.textAlign = 'left';
+    if (o.legend) {
+      ctx.font = '12px system-ui, sans-serif';
+      let x = PAD.l;
+      for (const it of o.legend) {
+        ctx.fillStyle = it.color; ctx.globalAlpha = it.light ? 0.35 : 1; ctx.fillRect(x, 8, 12, 12); ctx.globalAlpha = 1;
+        ctx.fillStyle = INK2; ctx.fillText(it.label, x + 17, 18); x += 17 + ctx.measureText(it.label).width + 18;
+      }
+      ctx.font = MONO;
+    }
   }
 
   // Range bars on a log axis. o = { rows:[{label, min, max, color}], x:{label, floor} }

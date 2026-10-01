@@ -2,7 +2,8 @@
 // no page errors, the variant reports ready, no horizontal overflow at 1536
 // and 390 px, screenshots per act, the walkthrough walks, a click places a
 // target that produces a trial row, and the frame rate is reported.
-// Run: node test/variants-browser.js [n ...]   (default: all built variants + chooser)
+// Run: node test/variants-browser.js [n ...]   (default: all built variants,
+// the main page index.html as variant 3, and the chooser; "main" = the main page only)
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -32,29 +33,32 @@ function check(name, cond, detail) {
   else { console.log('FAIL  ' + name + (detail ? '  (' + detail + ')' : '')); failures++; }
 }
 
-async function testVariant(browser, base, n) {
+async function testVariant(browser, base, arg) {
+  const main = arg === 'main', n = main ? '3' : arg, url = main ? '/index.html' : '/variants/' + n + '.html';
+  const label = main ? 'main(v3)' : 'v' + n;
   for (const width of [1536, 390]) {
     const page = await browser.newPage({ viewport: { width, height: width > 800 ? 960 : 844 } });
     const errors = [];
     page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
     page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
-    await page.goto(base + '/variants/' + n + '.html');
+    await page.goto(base + url);
     await page.waitForFunction(() => window.CR_VARIANT_READY, null, { timeout: 60000 }).catch(() => {});
     const ready = await page.evaluate(() => window.CR_VARIANT_READY);
-    check('v' + n + ' @' + width + ' ready', ready === String(n), String(ready));
+    check(label + ' @' + width + ' ready', ready === String(n), String(ready));
     await page.waitForTimeout(2500);
     await page.evaluate(() => { if (window.CR_TOUR) window.CR_TOUR.close(); });
     await page.waitForTimeout(300);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    check('v' + n + ' @' + width + ' no horizontal overflow', overflow <= 0, overflow + ' px');
+    check(label + ' @' + width + ' no horizontal overflow', overflow <= 0, overflow + ' px');
     const acts = await page.$$('[data-act]');
     let i = 0;
-    for (const act of acts) { i++; await act.scrollIntoViewIfNeeded(); await page.waitForTimeout(600); await act.screenshot({ path: path.join(OUT, 'v' + n + '-' + width + '-act' + i + '.png') }).catch(() => {}); }
-    await page.screenshot({ path: path.join(OUT, 'v' + n + '-' + width + '-full.png'), fullPage: true });
+    for (const act of acts) { i++; await act.scrollIntoViewIfNeeded(); await page.waitForTimeout(600); await act.screenshot({ path: path.join(OUT, label + '-' + width + '-act' + i + '.png') }).catch(() => {}); }
+    await page.screenshot({ path: path.join(OUT, label + '-' + width + '-full.png'), fullPage: true });
     if (width > 800) {
       // walkthrough
       const steps = await page.evaluate(() => (window.CR_TOUR ? window.CR_TOUR.steps.length : 0));
-      check('v' + n + ' tour has steps', steps >= 10, steps + ' steps');
+      const minSteps = n === '3' ? 5 : 10; // variant 3 has a deliberately short 5-step tour
+      check(label + ' tour has steps', steps >= minSteps, steps + ' steps');
       let bad = 0;
       for (let s = 0; s < steps; s++) {
         await page.evaluate((k) => window.CR_TOUR.goto(k), s);
@@ -66,11 +70,14 @@ async function testVariant(browser, base, n) {
         });
         const ok = geo.hlTop >= -4 && geo.hlBottom <= geo.vh + 4 && (geo.cardTop >= geo.hlBottom - 2 || geo.cardTop >= geo.hlTop) && geo.cardBottom <= geo.vh + 300;
         if (!ok) { bad++; console.log('      step ' + (s + 1) + ' geometry ' + JSON.stringify(geo)); }
-        if (s === 0 || s === 3 || s === steps - 1) await page.screenshot({ path: path.join(OUT, 'v' + n + '-tour' + (s + 1) + '.png') });
+        if (s === 0 || s === 3 || s === steps - 1) await page.screenshot({ path: path.join(OUT, label + '-tour' + (s + 1) + '.png') });
       }
-      check('v' + n + ' tour steps sit in the viewport above their card', bad === 0, bad + ' bad of ' + steps);
+      check(label + ' tour steps sit in the viewport above their card', bad === 0, bad + ' bad of ' + steps);
       await page.evaluate(() => window.CR_TOUR.close());
-      // click to place in the free-play scene (falls back to the first scene with an inspector)
+      // click to place in the free-play scene (falls back to the first scene with an inspector);
+      // a collapsed free-play section builds its scene when opened
+      await page.evaluate(() => { const d = document.querySelector('details.freeplay'); if (d && !d.open) d.open = true; });
+      await page.waitForTimeout(1500);
       const insp = (await page.$('[data-scene="a4"] [data-cr="inspector"]')) || (await page.$('[data-scene="free"] [data-cr="inspector"]')) || (await page.$('[data-scene] [data-cr="inspector"]'));
       if (insp) {
         await insp.scrollIntoViewIfNeeded();
@@ -78,12 +85,12 @@ async function testVariant(browser, base, n) {
         await page.mouse.click(box.x + box.width * 0.52, box.y + box.height * 0.45);
         await page.waitForTimeout(6800);
         const rows = await page.evaluate(() => { const b = document.querySelector('[data-scene="a4"] [data-cr="rows"]') || document.querySelector('[data-scene="free"] [data-cr="rows"]') || document.querySelector('[data-scene] [data-cr="rows"]'); return b ? b.querySelectorAll('tr:not([data-cr="empty"])').length : -1; });
-        check('v' + n + ' click places a target and a trial row appears', rows > 0, rows + ' rows');
+        check(label + ' click places a target and a trial row appears', rows > 0, rows + ' rows');
       }
       const fps = await page.evaluate(() => CR.kit.ticker().fps());
-      console.log('      v' + n + ' fps ' + fps);
+      console.log('      ' + label + ' fps ' + fps);
     }
-    check('v' + n + ' @' + width + ' no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+    check(label + ' @' + width + ' no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
     await page.close();
   }
 }
@@ -112,7 +119,7 @@ async function testChooser(browser, base) {
   const srv = await serve();
   const base = 'http://127.0.0.1:' + srv.address().port;
   const browser = await chromium.launch();
-  const want = process.argv.slice(2).length ? process.argv.slice(2) : ['1', '2', '3', '4', '5'].filter((n) => fs.existsSync(path.join(ROOT, 'variants', n + '.html')));
+  const want = process.argv.slice(2).length ? process.argv.slice(2) : ['1', '2', '3', '4', '5'].filter((n) => fs.existsSync(path.join(ROOT, 'variants', n + '.html'))).concat(['main']);
   for (const n of want) await testVariant(browser, base, n);
   if (fs.existsSync(path.join(ROOT, 'variants', 'index.html'))) await testChooser(browser, base);
   await browser.close();

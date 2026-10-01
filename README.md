@@ -1,6 +1,6 @@
 # Continuum robot visual servoing, two ways
 
-A single-file browser demo: a simulated two-segment tendon-driven continuum robot
+A browser demo: a simulated two-segment tendon-driven continuum robot
 chases 3D targets using only four markers seen by two fixed cameras. A classical
 resolved-rate controller (Jacobian from the textbook constant curvature model)
 runs against a small learned ensemble that was trained on the simulator's less
@@ -14,14 +14,18 @@ point.
 
 ## Quick start
 
-Live at <https://bolgacg.github.io/continuum-demo/>, nothing to install. Or open
-`index.html` in a browser: no install, no network, no libraries.
+Live at <https://bolgacg.github.io/continuum-demo/>, nothing to install. Or serve
+the folder and open `index.html`: no network, no libraries.
 
-Drag in the inspector to orbit, click to place a target on the height plane, move
-the plane in the side sensor view (or with the slider), flip Payload / Tendon
-drift / Planner, or press "Run scripted demo" (`index.html#demo` starts it
-automatically). Version 1, as published on 17 August, is kept byte for byte as
-`v1.html` and embedded at the bottom of the page.
+The main page is organised as three layers, each answering one question about
+version 1: sensing (`#act1`, two cameras, four markers, one point), model (`#act2`,
+constant curvature with backlash and lag on top, both identified from the cameras
+and compensated) and control (`#act3`, inverse kinematics on the model, tracked by
+two feedback laws). A free-play scene with every control sits at the bottom.
+
+The previous single-scene page is kept as `demo.html` (`demo.html#demo` starts its
+scripted demo). Version 1, as published on 17 August, is kept byte for byte as
+`v1.html`. Four other page structures that were considered are under `variants/`.
 
 ## Version 3, and why
 
@@ -37,7 +41,8 @@ about it followed from that:
 2. **The markers seemed to move along the robot.** Perspective: a segment bending
    toward the camera projected long, one bending away projected short, and the
    tube was drawn wider when nearer. In 3D the chord between neighbouring markers
-   varies under 4%; in that image it ran from about 1 px to about 60 px. A
+   varies by under 5% at flexibility x1.0 (about 4.96%, because an arc's chord
+   shortens as it bends); in that image it ran from about 1 px to about 60 px. A
    decorative taper on the drawn tube made it worse. The geometry never changed:
    two segments of constant arc length (1.0 and 0.8), one constant-curvature arc
    per segment, four markers at fixed arc positions, no joints, no cross-section.
@@ -141,7 +146,24 @@ absolute target position sharply; version 1 had the same test as a convex hull
 in the image, and an intermediate build that dropped it failed to flag a target
 well outside the workspace.
 
-**Planner.** See point 4 above. The plan is only as good as the ideal model; under
+**Backlash and lag, identified and compensated** (`src/core/hyst.js`, layer two of
+the main page). Each tendon passes through a first-order lag (time constant 0.09 s)
+and a play operator (half-width 0.035 curvature units, 2.01 degrees of bend in
+segment one). Both are identified from the triangulated tip alone. The play: one
+bend is swept back and forth at two speeds with no feedback; at each reversal the
+command distance covered before the tip turns around is the dead distance, which
+is extrapolated linearly to zero speed to remove the lag's share (2.02 degrees
+identified). The lag: with the play taken up, a small command step is applied and
+the logarithm of the remaining distance is fitted against time (0.0895 s
+identified). The compensators lead each tendon command by the identified
+half-width in its direction of motion (inverse play), then add the time constant
+times the command's rate of change (inverse lag). Open loop, on the slow sweep the
+mean gap between the rising and the falling pass is 11.3 mm uncompensated, 4.6 mm
+with the inverse play and 0.08 mm with both. In closed loop over 20 seeded interior
+targets (`node train/hyst-eval.js`) the classical law's steady-state error is
+0.24 mm without compensation and 0.02 mm with the inverse play.
+
+**Planner.** See point 5 above. The plan is only as good as the ideal model; under
 payload the reference path is not where the real tip goes and the feedback term
 carries the difference.
 
@@ -217,21 +239,30 @@ not a redundancy resolution.
 ## Repository layout
 
 ```
-index.html / demo.html   the deliverable (version 3); everything inlined, open from disk
-v1.html                  version 1, frozen byte for byte, embedded at the bottom of the page
+index.html               the main page: the three layers (variant 3), loads variants/*.js and shared.css
+demo.html                the previous single-scene page; everything inlined, open from disk
+v1.html                  version 1, frozen byte for byte
 template.html            page shell that build.js fills in
-build.js                 node build.js, writes demo.html + index.html
+build.js                 node build.js, writes demo.html
+build-variants.js        node build-variants.js, writes variants/ and index.html
+variants/                the five page structures considered, their templates and shared bundles
 src/core/                simulator, cameras + triangulation, controllers, planner, envelope
+src/core/hyst.js         backlash and lag identification from the cameras, their inverses
 src/ui/                  3D scene rendering, charts, app wiring
+src/variants/            scene kit, charts and page code for the variants (v3.js = main page)
 train/train.js           data generation + ensemble training (writes weights.json)
 train/workspace.js       reachable envelope + occupancy grid of the ideal model (writes workspace.json)
 train/eval.js            closed-loop evaluation tables (writes eval.json, rendered into the page)
+train/hyst-eval.js       closed-loop check of the backlash compensation (writes hyst.json)
 train/readme-tables.js   rewrites the README tables from eval.json
 test/sanity.js           kinematics, cameras, truth-sim, control, planner and envelope checks
+test/hyst.js             identification and compensation checks
+test/variants*.js        protocol, kit and headless browser checks of the pages
 ```
 
 To rebuild from scratch: `node train/train.js` (about 45 minutes on a laptop),
 `node train/workspace.js`, `node train/eval.js` (about 6 minutes),
-`node train/readme-tables.js`, then `node build.js`. Everything is deterministic via seeded RNGs.
+`node train/hyst-eval.js`, `node train/readme-tables.js`, then `node build.js` and
+`node build-variants.js`. Everything is deterministic via seeded RNGs.
 
 Bolgaç Gülen, August 2026

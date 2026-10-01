@@ -255,7 +255,7 @@
     <p>It was the convex hull of the 900 targets the ensemble trained on, projected into the image: irregular because it was the perspective silhouette of a 3D workspace, and not actually the reachable set. Version 3 computes the reachable set as itself: 200,000 sampled tip positions at the curvature limits, an outer envelope around them (the grey cage), the ensemble's training population beside it (the blue cage), and on the target plane the exact cross-section, holes included. Near the base that section is a ring: a robot of fixed length cannot bring its tip next to its own base. Whether one specific target is reachable is decided by inverse kinematics, and the trial table says <b>beyond reach</b> when it is not.</p>
 
     <h3><span class="qn">Q2</span>Is the distance between the joints variable?</h3>
-    <p>There are no joints and nothing varies. Two segments of constant arc length (1.0 and 0.8 normalized), one constant-curvature arc per segment, three tendons each, four markers at fixed arc positions. In 3D the chord between neighbouring markers changes by under 4%; the old oblique camera stretched that to a factor of sixty on screen, and a decorative taper on the drawn tube suggested geometry that was never modelled. The orbiting inspector, the constant-radius tube and the Tendons view now show the fixed structure directly.</p>
+    <p>There are no joints and nothing varies. Two segments of constant arc length (1.0 and 0.8 normalized), one constant-curvature arc per segment, three tendons each, four markers at fixed arc positions. In 3D the chord between neighbouring markers changes by under 5% at flexibility x1.0 (about 4.96%), because an arc's chord shortens as it bends; the old oblique camera stretched that to a factor of sixty on screen, and a decorative taper on the drawn tube suggested geometry that was never modelled. The orbiting inspector, the constant-radius tube and the Tendons view now show the fixed structure directly.</p>
 
     <h3><span class="qn">Q3</span>How was the inverse kinematics solved?</h3>
     <p>In version 1 it was not: both controllers were local feedback laws chasing a pixel, and with one camera a pixel is a line in space, so the loop could commit to the wrong bending plane and stall at the curvature limit. Version 3 gives both controllers a real 3D target (two calibrated cameras, triangulated markers) and puts a planner above them: numerical inverse kinematics on the ideal model, a coarse search over 12,000 sampled configurations refined by damped Gauss-Newton inside the limits, then a configuration path that the feedback laws track. The <b>Planner</b> switch turns it off, and the table below is the measured difference: direct, the classical law loses 18 of 40 workspace-edge targets and stalls about 25 mm short, the learned law loses 5; planned, both reach 40 of 40. A null-space term was tried first and barely moved the numbers; the failure is a basin, not redundancy resolution.</p>
@@ -712,6 +712,8 @@ const CR_WORKSPACE = {"meta":{"date":"2026-08-31","note":"train: same constructi
     const sim = {
       payload: 0,        // 0..1, ramped by the UI
       driftOn: false,
+      backlashK: null,   // per-sim backlash half-width override (curvature units); null = P.backlashK
+      tendonFilter: null, // optional controller-side filter(idx, tendonCmd) -> tendonCmd, e.g. inverse play
       qCmd: [0, 0, 0, 0],
       target: new Array(6).fill(0), // tendon targets (2 segments x 3 tendons)
       actual: new Array(6).fill(0), // after lag + rate limit
@@ -724,7 +726,10 @@ const CR_WORKSPACE = {"meta":{"date":"2026-08-31","note":"train: same constructi
     function updateTargets() {
       for (let i = 0; i < NSEG; i++) {
         const t = tendonsFromK(sim.qCmd[2 * i], sim.qCmd[2 * i + 1], i);
-        for (let j = 0; j < 3; j++) sim.target[3 * i + j] = t[j];
+        for (let j = 0; j < 3; j++) {
+          const idx = 3 * i + j;
+          sim.target[idx] = sim.tendonFilter ? sim.tendonFilter(idx, t[j]) : t[j];
+        }
       }
     }
 
@@ -751,7 +756,7 @@ const CR_WORKSPACE = {"meta":{"date":"2026-08-31","note":"train: same constructi
       for (let i = 0; i < NSEG; i++) {
         const rL = P.tendonRadius * pcc.SEG_LEN[i];
         const rateMax = P.rateMaxK * rL * dt;
-        const bl = P.backlashK * rL;
+        const bl = (sim.backlashK != null ? sim.backlashK : P.backlashK) * rL;
         for (let j = 0; j < 3; j++) {
           const idx = 3 * i + j;
           // first-order lag with rate limit

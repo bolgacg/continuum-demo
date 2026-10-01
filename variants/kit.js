@@ -933,12 +933,11 @@
     const ctrlOf = (r) => (st.usePlan ? r.tracked : r.direct);
 
     function condString(reachable) {
-      const c = [];
+      const c = [st.usePlan ? 'planner on' : 'planner off'];
       if (st.payloadTarget > 0) c.push('payload');
       if (st.driftOn) c.push('drift');
-      if (!st.usePlan) c.push('no plan');
       if (!reachable) c.push('beyond reach');
-      return c.length ? c.join(' + ') : 'nominal';
+      return c.join(' + ');
     }
 
     function startTrial(p3) {
@@ -1045,7 +1044,7 @@
     function reset() {
       buildRobots();
       for (const r of list()) { r.sim.reset(q0); r.tracked.reset(q0); r.direct.reset(q0); r.lastOut = null; }
-      st.target = null; st.lastRay = null; st.rayNote = ''; st.trial = null; st.lastSample = null;
+      st.target = null; st.lastRay = null; st.rayNote = ''; st.trial = null; st.lastSample = null; st.trialCount = 0;
       em.emit('reset');
     }
     reset();
@@ -1102,12 +1101,12 @@
         '<div class="feed-card"><div class="feed-head"><span class="feed-title">Inspector</span><span class="feed-sub">orbit view</span></div>' +
         '<div class="feed-frame"><canvas data-cr="inspector" width="460" height="345"></canvas>' +
         (o.presets === false ? '' : '<div class="hud-chips"><button class="chip" data-cr-preset="iso">Iso</button><button class="chip" data-cr-preset="side">Side</button><button class="chip" data-cr-preset="top">Top</button></div>') +
-        '</div><div class="feed-cap"><span class="grow" data-cr="cap-inspector">drag to orbit · click inside the outline to aim</span></div></div>');
+        '</div><div class="feed-cap"><span class="grow" data-cr="cap-inspector">' + (o.clickToPlace === false ? 'drag to orbit' : 'drag to orbit · click inside the outline to aim') + '</span></div></div>');
       if (views.includes('side')) parts.push(
         '<div class="feed-card"><div class="feed-head"><span class="feed-title">CAM 01 · side sensor</span><span class="feed-sub">what the controllers see</span></div>' +
         '<div class="feed-frame"><canvas data-cr="side" width="460" height="345"></canvas>' +
-        (o.planeSlider === false ? '' : '<input type="range" data-cr="plane" class="vslider" min="0" max="345" step="0.5" value="172" aria-label="target plane height">') +
-        '</div><div class="feed-cap"><span class="grow" data-cr="cap-side">drag the plane or the slider</span><span class="cr-plane-val" data-cr="plane-val">target plane z = 120 mm</span></div></div>');
+        (o.planeSlider === false || o.plane === false ? '' : '<input type="range" data-cr="plane" class="vslider" min="0" max="345" step="0.5" value="172" aria-label="target plane height">') +
+        '</div><div class="feed-cap"><span class="grow" data-cr="cap-side">' + (o.planeSlider === false || o.plane === false ? 'what the controllers see' : 'drag the plane or the slider') + '</span>' + (o.plane === false ? '' : '<span class="cr-plane-val" data-cr="plane-val">target plane z = 120 mm</span>') + '</div></div>');
       parts.push('</div>');
     }
     if (o.readouts !== false) {
@@ -1143,7 +1142,7 @@
     if (o.table) {
       parts.push('<div class="panel"><div class="panel-title">Trials</div><div class="panel-sub">One row per target, 6 s window. Settle: first time the error stays under 5 mm for 0.8 s. Steady state: mean error over the final second.</div>' +
         '<div class="table-scroll"><table><thead><tr><th>#</th><th>Condition</th><th class="col-c">classical settle</th><th class="col-c">steady state</th><th class="col-l">learned settle</th><th class="col-l">steady state</th></tr></thead>' +
-        '<tbody data-cr="rows"><tr data-cr="empty"><td colspan="6">No trials yet. Click in the inspector to place a target.</td></tr></tbody></table></div></div>');
+        '<tbody data-cr="rows"><tr data-cr="empty"><td colspan="6">' + (o.clickToPlace === false ? 'No trials yet. The first run fills this row.' : 'No trials yet. Click in the inspector to place a target.') + '</td></tr></tbody></table></div></div>');
     }
     return parts.join('\n');
   }
@@ -1182,6 +1181,7 @@
       if (sim.robots.learned && sim.robots.learned.inner.sigmaWarn) charts.setSigmaThreshold(sim.robots.learned.inner.sigmaWarn);
     }
     const em = makeEmitter();
+    let rowN = 0; // rows are numbered in the order they finish, per scene
 
     function presetName() {
       const near = (p) => Math.abs(orbit.az - p.az) < 1e-6 && Math.abs(orbit.el - p.el) < 1e-6;
@@ -1209,7 +1209,7 @@
       const learnedOut = sim.robots.learned && sim.robots.learned.lastOut;
       const first = sim.list()[0];
       const live = st.target && first && first.lastOut;
-      const phase = live ? (first.lastOut.tracking ? ' · PLAN' : ' · LOOP') : '';
+      const phase = live ? (first.lastOut.tracking ? ' · PLAN' : ' · CLOSED LOOP') : '';
       const robotsDraw = sim.list().filter((r) => visible[r.key]).map((r) => ({
         sim: r.sim, accent: r.accent, fan: fanFor(r),
         sRef: r.lastOut ? r.lastOut.sRef : null, tracking: r.lastOut ? r.lastOut.tracking : false,
@@ -1251,22 +1251,23 @@
     // sim events into DOM
     sim.on('sample', (s) => { if (charts) charts.push(s); });
     sim.on('event', (e) => { if (charts) charts.addEvent(e.t, e.label); });
+    sim.on('target', () => { const e = $('empty'); if (e) e.firstChild.textContent = 'Running: the row appears when the 6 s window ends.'; });
     sim.on('state', ({ key, state }) => { const el = $(key === 'classical' ? 'ro-c-state' : 'ro-l-state'); if (el) el.textContent = state; });
     sim.on('trial', (row) => {
-      const fmt = (p) => p ? [p.settle != null ? p.settle.toFixed(2) + ' s' : 'dns', p.steady != null ? p.steady.toFixed(1) + ' mm' : '–'] : ['–', '–'];
+      const fmt = (p) => p ? [p.settle != null ? p.settle.toFixed(2) + ' s' : 'did not settle', p.steady != null ? p.steady.toFixed(1) + ' mm' : '–'] : ['–', '–'];
       const [cs, css] = fmt(row.classical), [ls, lss] = fmt(row.learned);
       const body = $('rows');
       if (body) {
         const empty = $('empty'); if (empty) empty.remove();
         const tr = document.createElement('tr');
-        tr.innerHTML = '<td>' + row.id + '</td><td class="cond">' + row.cond + '</td><td>' + cs + '</td><td>' + css + '</td><td>' + ls + '</td><td>' + lss + '</td>';
+        tr.innerHTML = '<td>' + (++rowN) + '</td><td class="cond">' + row.cond + '</td><td>' + cs + '</td><td>' + css + '</td><td>' + ls + '</td><td>' + lss + '</td>';
         body.insertBefore(tr, body.firstChild);
         const max = typeof o.table === 'number' ? o.table : 10;
         while (body.children.length > max) body.removeChild(body.lastChild);
       }
       const set = (k, v) => { const el = $(k); if (el) el.textContent = v; };
-      if (row.classical) set('ro-c-settle', row.classical.settle != null ? row.classical.settle.toFixed(2) + ' s' : 'dns');
-      if (row.learned) set('ro-l-settle', row.learned.settle != null ? row.learned.settle.toFixed(2) + ' s' : 'dns');
+      if (row.classical) set('ro-c-settle', row.classical.settle != null ? row.classical.settle.toFixed(2) + ' s' : 'did not settle');
+      if (row.learned) set('ro-l-settle', row.learned.settle != null ? row.learned.settle.toFixed(2) + ' s' : 'did not settle');
       em.emit('trial', row);
     });
     sim.on('reset', () => {
@@ -1289,7 +1290,22 @@
     sim.on('plane', () => syncPlaneSlider());
     function canvasPx(ev, cv) { const rect = cv.getBoundingClientRect(); return [(ev.clientX - rect.left) * (W / rect.width), (ev.clientY - rect.top) * (H / rect.height)]; }
 
-    function startTrial(p3) { hadClick = true; return sim.startTrial(p3); }
+    function startTrial(p3) {
+      hadClick = true;
+      if (o.rejectBeyond && sim.st.rayNote) {
+        sim.st.rayNote = '';
+        note('the click ray runs nearly parallel to the target plane: not run. Click where the ray meets the plane, in the band between the outlines.');
+        em.emit('rejected', null);
+        return null;
+      }
+      if (o.rejectBeyond && !A.planner.solveIK(p3, [0, 0, 0, 0]).reachable) {
+        note('beyond reach at z = ' + (p3[2] * MM).toFixed(0) + ' mm: not run. Click in the band between the two outlines.');
+        em.emit('rejected', p3.slice());
+        return null;
+      }
+      note('');
+      return sim.startTrial(p3);
+    }
     function demoTarget(p3) { setPlaneY(p3[2], false); return startTrial(p3); }
 
     if (views.inspector) {
@@ -1317,7 +1333,7 @@
       cv.addEventListener('pointerup', up);
       cv.addEventListener('pointercancel', () => { down = null; });
     }
-    if (views.side && o.planeSlider !== false) {
+    if (views.side && o.planeSlider !== false && o.plane !== false) {
       const cv = views.side.canvas;
       let moved = false;
       cv.addEventListener('pointerdown', (ev) => {
@@ -1461,31 +1477,39 @@
   function schematic(box) {
     if (!box) return;
     const cv = box.querySelector('canvas'), svg = box.querySelector('svg');
-    const W = 920, H = 690, dpr = window.devicePixelRatio || 1;
+    const W = Number(cv.getAttribute('width')) || 920, H = Number(cv.getAttribute('height')) || 690, dpr = window.devicePixelRatio || 1;
     cv.width = W * dpr; cv.height = H * dpr;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
     const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const cam = camera.orbitCamera(0.75, 0.42, W, H);
-    const sim = truth.createTruth(1); sim.reset([0.9, 0.25, 0.6, -0.4]);
-    const target = [0.55, 0.65, 1.1];
+    // a wide frame: the orbit camera sees a 460 by 345 window; scale its focal length to this canvas
+    const view = box.dataset.view ? JSON.parse(box.dataset.view) : [0.1, 0.16, 2.9];
+    const cam = camera.orbitCamera(view[0], view[1], W, H, view[2]);
+    const sim = truth.createTruth(1); sim.reset(box.dataset.q ? JSON.parse(box.dataset.q) : [0, 1.3, 0, 1.8]);
+    const planeZ = 1.2;
+    const target = [0.35, 0.95, planeZ];
     const g = assets().geometry(pcc.flex());
-    scene.draw(ctx, { W, H, cam, robots: [{ sim, accent: ACCENT.classical }], target, plane: { y: 1.1, show: true },
-      section: workspace.gridSectionSegments(g.grid, 1.1), volume: { mesh: g.mesh, show: true }, trainVolume: { mesh: null },
-      sensors: [{ cam: camera.sideCamera(460, 345), label: '' }, { cam: camera.topCamera(460, 345), label: '' }],
-      label: 'THE SETUP', t: 0, layerKey: 'kit/schematic' });
+    scene.draw(ctx, { W, H, cam, robots: [{ sim, accent: ACCENT.classical }], target, plane: { y: planeZ, show: true },
+      section: workspace.gridSectionSegments(g.grid, planeZ), volume: { mesh: g.mesh, show: true }, trainVolume: { mesh: null },
+      sensors: null, label: 'THE SETUP', t: 0, layerKey: 'kit/schematic' });
     const m = sim.markers3();
     const NS = 'http://www.w3.org/2000/svg';
-    const lab = (p, text, dx, dy) => { const s = cam.project(p); if (!s) return; const el = document.createElementNS(NS, 'text'); el.setAttribute('x', s[0] + (dx || 8)); el.setAttribute('y', s[1] + (dy || -8)); el.textContent = text; svg.appendChild(el); };
-    lab([0, 0, 0], 'base', 10, 18);
-    lab(pcc.poseAt(sim.qEff(), 0, 0.3).p, 'segment 1, length 1.0', -150, 0);
-    lab(pcc.poseAt(sim.qEff(), 1, 0.3).p, 'segment 2, length 0.8', 12, 0);
-    ['m1 (mid)', 'm2 (end)', 'm3 (mid)', 'm4 (tip)'].forEach((s, i) => lab(m[i], s, 10, -8));
-    lab(camera.sideCamera(460, 345).pos, 'CAM 01, side', -40, -12);
-    lab(camera.topCamera(460, 345).pos, 'CAM 02, top', 10, -8);
-    lab(target, 'target on the plane', 12, 20);
-    lab([1.5, -1.5, 1.1], 'target plane, z = 110 mm', -40, -8);
-    const dir = v3.normalize(v3.sub(target, cam.pos));
-    const a = cam.project(v3.sub(target, v3.scale(dir, 1.4))), b = cam.project(target);
-    if (a && b) { const l = document.createElementNS(NS, 'line'); l.setAttribute('x1', a[0]); l.setAttribute('y1', a[1]); l.setAttribute('x2', b[0]); l.setAttribute('y2', b[1]); l.setAttribute('stroke-dasharray', '4 4'); svg.appendChild(l); lab(v3.sub(target, v3.scale(dir, 0.9)), 'click ray', 10, -6); }
+    // each label sits at a fixed screen offset from its point, joined by a short leader line
+    const lab = (p, text, dx, dy, anchor) => {
+      const s = cam.project(p); if (!s) return;
+      const x = s[0] + dx, y = s[1] + dy;
+      if (dx || dy) { const l = document.createElementNS(NS, 'line'); l.setAttribute('x1', s[0]); l.setAttribute('y1', s[1]); l.setAttribute('x2', x - (anchor === 'end' ? -3 : 3)); l.setAttribute('y2', y - 4); l.setAttribute('class', 'leader'); svg.appendChild(l); }
+      const el = document.createElementNS(NS, 'text'); el.setAttribute('x', x); el.setAttribute('y', y); if (anchor) el.setAttribute('text-anchor', anchor); el.textContent = text; svg.appendChild(el);
+    };
+    const spots = JSON.parse(box.dataset.labels || 'null') || {
+      base: [40, 10, 'start'], seg1: [-60, 20, 'end'], seg2: [60, -20, 'start'],
+      m1: [-50, -6, 'end'], m2: [-40, -24, 'end'], m3: [30, -34, 'start'], m4: [40, 6, 'start'],
+      target: [-30, 34, 'end'],
+    };
+    lab([0, 0, 0], 'base', ...spots.base);
+    lab(pcc.poseAt(sim.qEff(), 0, 0.45).p, 'segment 1, length ' + (pcc.SEG_LEN[0] * CONST.MM).toFixed(0) + ' mm', ...spots.seg1);
+    lab(pcc.poseAt(sim.qEff(), 1, 0.45).p, 'segment 2, length ' + (pcc.SEG_LEN[1] * CONST.MM).toFixed(0) + ' mm', ...spots.seg2);
+    ['m1 (mid)', 'm2 (end)', 'm3 (mid)', 'm4 (tip)'].forEach((t, i) => lab(m[i], t, ...spots['m' + (i + 1)]));
+    lab(target, 'target on the plane', ...spots.target);
   }
 
   // ---------------- model card ----------------
@@ -1639,7 +1663,7 @@
     for (let v = t0; v <= max + 1e-9; v += step) out.push(+v.toFixed(10));
     return out;
   }
-  function fmt(v) { return Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/\.?0+$/, ''); }
+  function fmt(v) { if (Number.isInteger(+v.toFixed(9))) return String(Math.round(v)); return Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2).replace(/\.?0+$/, ''); }
 
   // Line chart. o = { series:[{name, color, points:[[x,y]], dashed?}], x:{label,min,max}, y:{label,min,max,log?}, marker:{x,label}, hairline:{y,label} }
   function line(cv, o) {
@@ -1727,12 +1751,13 @@
     ctx.font = '600 11px system-ui, sans-serif';
     for (const l of labels) { ctx.fillStyle = l.color; ctx.fillText(l.name, W - PAD.r + 6, l.y + 3); }
     ctx.font = MONO;
+    return { ctx, px, py, W, H, PAD };
   }
 
   // Grouped bars. o = { groups:[{label, bars:[{label, value, color, light}]}], y:{max,label}, valueLabel:fn }
   function bars(cv, o) {
     const { ctx, W, H } = prep(cv);
-    const PAD = { l: 44, r: 14, t: 16, b: 34 };
+    const PAD = { l: 44, r: 14, t: o.legend ? 46 : 16, b: 34 };
     const ymax = (o.y && o.y.max) || Math.max(...o.groups.flatMap((g) => g.bars.map((b) => b.value)));
     const py = (v) => PAD.t + (1 - v / ymax) * (H - PAD.t - PAD.b);
     ctx.fillStyle = MUTED; ctx.textAlign = 'right';
@@ -1752,6 +1777,15 @@
       ctx.fillStyle = MUTED; ctx.fillText(g.label, PAD.l + gi * gw + gw / 2, H - 10);
     });
     ctx.textAlign = 'left';
+    if (o.legend) {
+      ctx.font = '12px system-ui, sans-serif';
+      let x = PAD.l;
+      for (const it of o.legend) {
+        ctx.fillStyle = it.color; ctx.globalAlpha = it.light ? 0.35 : 1; ctx.fillRect(x, 8, 12, 12); ctx.globalAlpha = 1;
+        ctx.fillStyle = INK2; ctx.fillText(it.label, x + 17, 18); x += 17 + ctx.measureText(it.label).width + 18;
+      }
+      ctx.font = MONO;
+    }
   }
 
   // Range bars on a log axis. o = { rows:[{label, min, max, color}], x:{label, floor} }

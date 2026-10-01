@@ -3,124 +3,130 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Geometric model or learned model: what is this controller built on?</title>
+<title>A geometric model with backlash and lag on top: a simulated continuum robot</title>
 <!--CR_HEAD-->
 </head>
 <body data-variant="3">
 <div class="wrap" id="variant-3">
 
   <header>
-    <div class="eyebrow">simulation study · version 3 · variant 3 of 5 · <!--BUILD_STAMP--></div>
-    <h1>Geometric model or learned model: what is this controller built on?</h1>
+    <div class="eyebrow">simulation study · September 2026</div>
+    <h1>A geometric model with backlash and lag on top: a simulated continuum robot</h1>
     <p class="intro">
-      The controller on this page is built on a geometric model, and the page is organised as the
-      three layers of that build: what the cameras sense, what the model assumes, and what the
-      control law does with both. Each layer answers one of the questions a robotics researcher
-      asked about the first version, and each states what it is allowed to know. At the end you
-      will know that the boundary is a property of the sensed workspace, that the geometry is the
-      standard constant-curvature model with four invented effects on top, and that the inverse
-      kinematics is solved on the geometric model and tracked by the loop.
+      It is built on a geometric model: each of the two segments is one constant-curvature arc of
+      fixed length (Webster and Jones, 2010), so four numbers describe the whole robot, and the
+      simulator adds lag, backlash, sag and drift on top, with invented coefficients. The
+      page is the three layers of that build, what the cameras sense, what the model assumes and
+      what the control law does, and each layer answers one of the questions quoted below.
     </p>
     <ul class="cr-headlines">
-      <li><span>Is the drawn outline the reachable set?<small>outline against inverse kinematics on the current plane, computed on load</small></span><b data-h="agree">computing</b></li>
-      <li><span>How much does the invented sag move the tip?<small>at full lean and full payload, from the truth model's own static map</small></span><b data-h="sag">computing</b></li>
-      <li><span>Does a feedback law alone reach the edge of the workspace?<small>direct against planned, classical law, 40 edge targets, from the evaluation run</small></span><b><!--EVAL:edge,nominal,classical,0--> against <!--EVAL:edge,nominal,classical,3--></b></li>
+      <li><span><a href="#act1">Is the drawn outline the reachable set?</a><small>outline against inverse kinematics on 300 random points of the default plane, computed on load; the ones that disagree sit on the edge</small></span><b data-h="agree">computing</b></li>
+      <li><span><a href="#act2">How wide is the backlash loop, and what does compensating it leave?</a><small>open loop, slow sweep, mean vertical gap between the rising and the falling pass: uncompensated, then with inverse play and inverse lag, both identified from the cameras</small></span><b data-h="loop">computing</b></li>
+      <li><span><a href="#act3">Does a feedback law alone reach the edge of the workspace?</a><small>edge targets settled, classical law, direct against planned, from the evaluation run</small></span><b><!--EVAL:edge,nominal,classical,0--> against <!--EVAL:edge,nominal,classical,3--></b></li>
     </ul>
-    <div class="cr-byline"><span>Bolgaç Gülen · September 2026</span><a href="https://github.com/bolgacg/continuum-demo">source on GitHub</a><button data-tour-open>Restart the walkthrough</button></div>
+    <div class="cr-byline"><span>Bolgaç Gülen · September 2026</span><a href="https://github.com/bolgacg/continuum-demo">source on GitHub</a><button data-tour-open>Take the 5-step tour</button></div>
   </header>
 
-  <h2>Before the robot, five things</h2>
-  <ol class="primer">
-    <li>A continuum robot bends along its length instead of turning at joints. This one has two bending segments of fixed length, like two circle arcs joined end to end.</li>
-    <li>Four markers on the robot are seen by two fixed cameras. Each marker's 3D position is computed from the two images, which is called triangulation, and that is all either controller gets.</li>
-    <li>A controller is a rule that turns the gap between the tip and the target into a change of bend. The orange one uses the textbook model; the blue one learned from a simulator with lag, backlash, sag and drift added.</li>
-    <li>The reachable set is every point the tip can occupy without exceeding the bending limits. A target outside it cannot be reached by any controller.</li>
-    <li>Lengths on this page are a display convention: the model is dimensionless and drawn as if the robot were 180 mm long.</li>
-  </ol>
-  <div class="schematic" data-schematic><canvas width="920" height="690"></canvas><svg viewBox="0 0 920 690"></svg></div>
-  <p class="caption">The setup, drawn by the same renderer as every scene below: the base, the two segments, the four markers (filled at segment ends, hollow at midpoints), the two sensors, the target plane and the click ray that places a target on it.</p>
+  <div class="schematic" data-schematic><canvas width="920" height="430"></canvas><svg viewBox="0 0 920 430"></svg></div>
+  <p class="caption">The setup, drawn by the same renderer as every scene below: two segments of fixed length, four markers (filled at segment ends, hollow at midpoints), the reachable set as a grey cage, and the target plane with the reachable set's outline on it.</p>
 
-  <details class="glossary" open>
+  <ol class="primer">
+    <li>Four markers on the robot are seen by two fixed cameras, a side one and a top one. Each marker's 3D position is triangulated from the two images, and that is all either controller gets.</li>
+    <li>A controller turns the gap between the tip and the target into a change of bend. The orange one uses the textbook model; the blue one is a small ensemble of networks trained on the simulator with its four effects.</li>
+    <li>Lengths are shown as if the robot were 180 mm long; the model itself is dimensionless.</li>
+  </ol>
+
+  <details class="glossary">
     <summary>Terms used on this page</summary>
     <dl>
       <dt>constant curvature</dt><dd>the assumption that each segment bends as one circular arc; four numbers then describe the whole robot, a curvature and a bending direction per segment</dd>
-      <dt>truth model</dt><dd>the simulator the controllers are tested against: the ideal geometry plus lag, backlash, sag and drift, with coefficients typed by the author</dd>
-      <dt>marker</dt><dd>one of four points on the robot that the cameras can see: the middle and end of each segment</dd>
+      <dt>truth model</dt><dd>the simulator the controllers are tested against: the ideal geometry plus lag, backlash, sag and drift, with invented coefficients</dd>
+      <dt>play operator</dt><dd>a dead band on each tendon: after a reversal the command must travel twice the half-width before the tendon moves again; the element Prandtl-Ishlinskii hysteresis models are built from</dd>
+      <dt>inverse play</dt><dd>leading each tendon command by the half-width in its direction of motion, so the dead band is crossed at command time</dd>
+      <dt>inverse lag</dt><dd>a lead filter: adding the time constant times the command's rate of change, which undoes a first-order lag</dd>
       <dt>triangulation</dt><dd>computing a point's 3D position from its pixel in two cameras whose poses are known</dd>
       <dt>click ray</dt><dd>the line in space behind a click on a camera image; the target plane turns it into a point</dd>
-      <dt>Jacobian</dt><dd>the table of how much each curvature moves the tip; the classical law inverts it to choose a bend</dd>
-      <dt>inverse kinematics</dt><dd>finding the bend that puts the tip on a chosen point, solved here on the ideal model</dd>
-      <dt>reachable set, cross-section</dt><dd>every point the tip can occupy within the limits; its slice at one height is the outline drawn on the target plane</dd>
+      <dt>inverse kinematics</dt><dd>finding the bend that puts the tip on a chosen point, solved here on the ideal model by damped Gauss-Newton inside the bending limits</dd>
+      <dt>reachable set</dt><dd>every point the tip can occupy within the limits; its slice at one height is the outline drawn on the target plane</dd>
       <dt>planner</dt><dd>solve the inverse kinematics first, then let the feedback law track the path to that solution</dd>
-      <dt>ensemble</dt><dd>five small networks that each propose a command; their spread is a measure of doubt</dd>
       <dt>settle, steady state</dt><dd>settle: the first time the tip error stays under 5 mm for 0.8 s; steady state: the mean error over the final second of a 6 s trial</dd>
       <dt>edge and interior targets</dt><dd>edge targets sit at 95 to 100 percent of the bending limits; interior ones at up to 85 percent</dd>
     </dl>
   </details>
 
-  <h2>The three questions this page answers</h2>
+  <h2>The questions this page answers</h2>
   <div class="questions">
-    <p class="caption">Asked about version 1 on 29 August, quoted as written.</p>
-    <blockquote><span class="q">Q1</span>How did you determine the irregular boundary?</blockquote>
-    <blockquote><span class="q">Q2</span>How did you model your robot? Is the distance between each pair of joints variable? In practice, it is usually difficult to physically manufacture a continuum structure with continuously varying geometry.</blockquote>
-    <blockquote><span class="q">Q3</span>How did you solve the inverse kinematics of the robot?</blockquote>
-    <p class="caption">And on 6 September: whether the model is a geometric model or some other type. The second layer answers that one directly.</p>
+    <p class="caption">Questions, and one remark, from a robotics researcher about the first version, paraphrased.</p>
+    <blockquote><span class="q">Q1</span>How was the irregular boundary determined? <em class="where">Layer one.</em></blockquote>
+    <blockquote><span class="q">Q2</span>How is the robot modelled, and does the distance between neighbouring markers vary? A continuum structure with continuously varying geometry would be hard to manufacture. <em class="where">Layer two.</em></blockquote>
+    <blockquote><span class="q">Q3</span>How is the inverse kinematics solved? <em class="where">Layer three.</em></blockquote>
+    <blockquote><span class="q">Q4</span>Is the model geometric, or of some other type? <em class="where">The first line of this page, and layer two.</em></blockquote>
+    <blockquote><span class="q">Remark</span>Hysteresis is common in continuum and soft robots, and one of the main reasons to model such effects and develop compensation for them. <em class="where">Layer two, the loop.</em></blockquote>
   </div>
-  <ul class="refs">
-    <li>Webster and Jones, 2010, Design and kinematic modeling of constant curvature continuum robots: the constant-curvature arc, the geometry of every segment here.</li>
-    <li>Chaumette and Hutchinson, 2006, Visual servo control: the feedback law, resolved-rate servoing on a point feature.</li>
-    <li>Kuhnen, 2003, Modeling, identification and compensation of complex hysteretic nonlinearities: the play operator, the element the simulated backlash is built from.</li>
-  </ul>
 
   <!-- ============================ layer one ============================ -->
   <section class="act" data-act="1" id="act1">
     <div class="act-eyebrow">Layer one · sensing</div>
     <h2 class="act-title">Two cameras, four markers, one point</h2>
     <div class="knows">What this layer knows: pixels in two calibrated cameras. Nothing about the robot's shape.</div>
-    <p class="lede">This layer matters because the boundary question is a sensing question: a boundary drawn in one image is a silhouette, and the loop can only target what the sensing can localise. The inspector shows both sensors as small frustums. A click is a ray from the camera you click in; the target plane turns that ray into a point; the outline on the plane says whether that point is inside the reachable set.</p>
+    <p class="lede">The boundary question is a sensing question. In the first version the boundary was drawn in one camera image, where it is only a silhouette. Here a click is a ray from the camera you click in, the target plane turns that ray into a point, and the outline on the plane is the reachable set's slice at that height, so it says whether the point is a task at all.</p>
+    <p class="control"><b>Drag the target plane</b> in the side sensor view, or its slider, then click in the band between the two outlines. <span class="hint">The chart below the views lays out the last click ray and marks where the plane cuts it.</span></p>
     <div class="scene" data-scene="a1"></div>
-    <p class="control"><b>Drag the target plane</b> in the side sensor view, or its slider, then click inside the outline. <span class="hint">The chart below lays out the last click ray and marks where the plane cuts it.</span></p>
     <div class="panel">
       <div class="panel-title">Reachable stretches along the click ray</div>
       <div class="panel-sub">The last click ray laid out by distance from the camera; shaded where it passes through the reachable set; the marker is where the target plane cuts it.</div>
       <canvas class="cr-chart" data-chart="ray" width="944" height="120"></canvas>
       <ul class="lines">
-        <li><b>You see</b>one line, the click ray, from the camera outward; shaded stretches are inside the reachable set, tested at grid resolution; the marker is the point the plane makes of it.</li>
-        <li><b>Read it</b>inside a shaded stretch the point is a valid task; outside, the trial table will say beyond reach; near the base the ray can enter, leave and re-enter the set, because the set is a ring there.</li>
+        <li><b>Read it</b>inside a shaded stretch the point is a valid task; outside, the trial table says beyond reach. Near the base the ray can enter, leave and re-enter the set, because the set is a ring there.</li>
         <li><b>Take away</b>a click gives a line, the plane gives the point, and the reachable set decides whether the point is a task.</li>
       </ul>
     </div>
     <div class="verdict">
-      <p class="opener">The target is a point because two constraints fix it, the click ray and the plane; the outline on the plane is the reachable set's slice there.</p>
-      <p>At the current plane the outline and the inverse-kinematics solver agree on <span class="num" data-v="agreeP">…</span> percent of <span class="num" data-v="agreeN">…</span> random points. The last click's point was <span class="num" data-v="lastVerdict">not placed yet</span>.</p>
+      <p class="opener">The boundary is the reachable set's slice at the target plane, computed from the model, not drawn from any image.</p>
+      <p>At the current plane the outline and the inverse-kinematics solver agree on <span class="num" data-v="agreeP">computing</span> percent of <span class="num" data-v="agreeN">300</span> random points; the <span class="num" data-v="disN">computing</span> that disagree all lie within <span class="num" data-v="disMax">computing</span> of the outline, inside one 6 mm grid cell of the edge. A click outside the band is refused rather than run. The last click's point was <span class="num" data-v="lastVerdict">not placed yet</span>.</p>
     </div>
-    <p class="handover">Sensing gives the point; whether the tip can reach it is the model's business.</p>
   </section>
 
   <!-- ============================ layer two ============================ -->
   <section class="act" data-act="2" id="act2">
     <div class="act-eyebrow">Layer two · model</div>
-    <h2 class="act-title">Constant curvature, fixed lengths, four invented effects</h2>
-    <div class="knows">What this layer knows: the ideal geometry and four numbers of configuration. Nothing about lag, backlash, sag or drift.</div>
-    <p class="lede">This layer answers two questions at once: whether anything varies along the robot, and whether the model is geometric or of some other type. It is geometric. Each segment is one constant-curvature arc of fixed length; three tendons at a fixed radius bend it; four markers sit at fixed positions along the arc. On top of that geometry the simulator adds four effects the controllers are never told about. The one with a visible static mechanism is sag: the robot below holds a leaning pose with its tendons drawn, and the payload toggle loads it.</p>
-    <div class="scene" data-scene="a2"></div>
-    <p class="control"><b>Flip the Payload switch</b> in the toolbar. <span class="hint">The load ramps over about a second; the marker on the chart moves with the current lean and load.</span></p>
+    <h2 class="act-title">Constant curvature, fixed lengths, backlash and lag on top</h2>
+    <div class="knows">What this layer knows: the ideal geometry, plus a play width and a lag time constant identified from the cameras. Nothing about sag, coupling or drift.</div>
+    <p class="lede">It is a geometric model. Each segment is one constant-curvature arc of fixed length, three tendons at a fixed radius bend it, and the four markers sit at fixed positions along the arc, so nothing along the robot changes length. On top of that geometry the simulator adds four effects the controllers are never told about. Two of them make the tip's path depend on where the command came from: backlash, a play operator on every tendon, which is rate independent, and a first-order lag on every tendon, which grows with speed. Below, one bend is swept back and forth with no feedback at all, and the tip's path against the command traces the loop.</p>
+    <p class="hy-numbers" data-hy="numbers">Mean gap on this sweep: computing</p>
+    <div class="hy-grid">
+      <div class="feed-card">
+        <div class="feed-head"><span class="feed-title">The sweep, side view</span><span class="feed-sub">open loop, no feedback</span></div>
+        <div class="feed-frame"><canvas data-hy="view" width="460" height="345"></canvas></div>
+        <div class="feed-cap"><span class="grow">solid: simulated robot · dashed: ideal model</span></div>
+      </div>
+      <div class="feed-card">
+        <div class="feed-head"><span class="feed-title">Command against tip</span><span class="feed-sub">the loop the cameras see</span></div>
+        <div class="panel hy-panel"><canvas class="cr-chart" data-chart="loop" width="460" height="345"></canvas></div>
+        <div class="legend-inline"><span><i style="border-color:#8a8f88"></i>no compensation</span><span><i style="border-color:#d95926"></i>inverse play</span><span><i style="border-color:#1d7a6a"></i>inverse play and inverse lag</span><span><i class="dash" style="border-color:#1f1e1c"></i>ideal model</span></div>
+      </div>
+    </div>
+    <div class="hy-controls">
+      <span class="seg" data-hy="mode"><button data-mode="0">no compensation</button><button class="on" data-mode="1">inverse play</button><button data-mode="2">play and lag</button></span>
+      <span class="seg" data-hy="speed"><button class="on" data-speed="0">slow sweep</button><button data-speed="1">three times faster</button></span>
+    </div>
     <div class="panel">
-      <div class="panel-title">Sag against lean</div>
-      <div class="panel-sub">Extra tip droop from the truth model's static map against the lean of the first segment, at no payload and at full payload, computed on load; the marker is the current pose.</div>
-      <canvas class="cr-chart" data-chart="sag" width="944" height="220"></canvas>
       <ul class="lines">
-        <li><b>You see</b>how far the truth model's tip sits from the ideal model's tip, in millimetres, against how far the first segment leans from vertical, in degrees; one curve without payload, one with.</li>
-        <li><b>Read it</b>an upright straight robot sits at zero lean and does not sag; the curves rise with lean, and the payload scales them.</li>
-        <li><b>Take away</b>sag is a rule the ideal model does not contain, and its coefficients are invented, so the comparison is fair but the numbers are not a device's.</li>
+        <li><b>You see</b>the commanded bend of segment one across, the tip's sideways position as the two cameras triangulate it up; each curve is one full sweep at the chosen speed. The grey loop is always drawn; the chosen compensation is drawn over it and runs in the animation.</li>
+        <li><b>Read it</b>at the same command the rising and the falling pass sit apart; that vertical gap, in millimetres of tip position, is what the numbers above the chart average over the sweep. The loop's horizontal width is the dead band a reversed command must cross before the tip turns.</li>
+        <li><b>Take away</b>the inverse play removes the rate-independent part; what it leaves grows with speed, and inverting the lag as well closes the loop, because this simulator contains exactly those two models. The closed curve still sits <span data-v="leadOffset">computing</span> off the dashed ideal on average: that offset is the static sag and the coupling between segments, which are not compensated here.</li>
       </ul>
     </div>
     <div class="verdict">
       <p class="opener">It is a geometric model: two constant-curvature arcs of fixed length, four numbers of configuration; the effects are additions with invented coefficients.</p>
-      <p>The arc length is <span class="num" data-v="arc">…</span> units in every pose, a constant of the model. Over 300 random poses at the current flexibility the first marker pair's 3D chord varies by <span class="num" data-v="chordP">…</span> percent, because an arc's chord shortens as it bends, not because anything moves along the robot. The four effects and their coefficients, as typed:</p>
-      <div class="table-scroll"><table class="coef static-table" data-coef><thead><tr><th>effect</th><th>form</th><th>coefficient</th><th>value</th></tr></thead><tbody></tbody></table></div>
+      <p>Constant curvature is the standard kinematic model and the cheapest one. A Cosserat-rod or finite-element model would add what it leaves out, such as load-dependent shape and friction along the backbone, at a much higher cost per step; this page stays with the arcs and puts the missing physics in the four effects instead.</p>
+      <p>The arc length is <span class="num" data-v="arc">1.8000</span> units in every pose. Over 300 random poses at flexibility x1.0 the first marker pair's 3D chord is at most <span class="num" data-v="chordP">computing</span> percent shorter than the 50 mm of arc between them, because an arc's chord shortens as it bends, not because anything moves along the robot.</p>
+      <p>Both effects were identified from the two cameras alone. The backlash half-width comes from sweeping one bend at two speeds and extrapolating the dead distance at each reversal to zero speed: <span class="num" data-v="estW">computing</span> of bend in segment one per tendon, against the <span class="num" data-v="trueW">computing</span> the simulator was given. The lag time constant comes from a small step in the command, with the play already taken up: <span class="num" data-v="estTau">computing</span> against <span class="num" data-v="trueTau">computing</span>. The cameras are noise free and the simulator contains exactly these two operators, so the matches test the code, not a method for real hardware. It is the identify-then-compensate step of a simulation-to-real pipeline, run against a simulator instead of a robot.</p>
+      <p>On the slow sweep the mean gap is <span class="num" data-v="gapOff">computing</span> without compensation, <span class="num" data-v="gapOn">computing</span> with the inverse play and <span class="num" data-v="gapLead">computing</span> with the lag inverted as well. Even the slow sweep moves fast enough for the <span class="num" data-v="trueTau">computing</span> lag to leave <span class="num" data-v="gapOn">computing</span> after the inverse play. At three times the speed, <span class="num" data-v="gapOffFast">computing</span>, <span class="num" data-v="gapOnFast">computing</span> and <span class="num" data-v="gapLeadFast">computing</span>. Here the rate-dependent part is one clean first-order lag, so a lead filter removes it. On a real robot it is not, and that is where a rate-dependent Prandtl-Ishlinskii model or a sequence model such as an LSTM earns its place (Wu and others, 2021).</p>
+      <p>On a real robot the same identify-then-invert step would run on measured camera data instead of a simulator, and the first test would be whether the identified residual per tendon stays fixed or changes with bend and speed. Where it changes, a fixed operator is the wrong model and a learned residual is the natural replacement.</p>
+      <p>With the camera loop closed, feedback already hides most of it, at errors below what any real camera could resolve. For the classical law with the planner, no payload and no drift, over <!--HYST:N--> seeded interior targets, all settled either way, the steady-state error is <span class="num"><!--HYST:none_steady--></span> without compensation and <span class="num"><!--HYST:estimate_steady--></span> with the inverse play; at twice the estimate it settles sooner (median <!--HYST:twice_settle--> against <!--HYST:none_settle-->) but ends at <span class="num"><!--HYST:twice_steady--></span>, so a wrong width costs accuracy. The four effects and their coefficients:</p>
+      <div class="table-scroll"><table class="coef static-table" data-coef><thead><tr><th>effect</th><th>form</th><th>coefficient</th><th>value, invented</th></tr></thead><tbody></tbody></table></div>
     </div>
-    <p class="handover">The control layer sees none of the truth model; it sees the point from layer one and the geometry from this layer.</p>
   </section>
 
   <!-- ============================ layer three ============================ -->
@@ -128,53 +134,60 @@
     <div class="act-eyebrow">Layer three · control</div>
     <h2 class="act-title">Inverse kinematics on the model, tracked by two laws</h2>
     <div class="knows">What this layer knows: the triangulated point and the ideal geometry. Nothing from the simulator.</div>
-    <p class="lede">The third question exposed the largest omission, no inverse kinematics in the first version, and this layer shows what the plan adds. Both controllers below get the same target, curled under the base. With the planner off they chase it directly; with it on, the inverse kinematics is solved on the geometric model first and the same feedback laws track that path. The chart holds the evaluation run: 40 edge targets per condition, each controller, with and without the plan.</p>
+    <p class="lede">The first version had no inverse kinematics at all, and adding it changed more than anything else. Both controllers below get the same target, curled under the base. With the planner off they chase it directly; with it on, the inverse kinematics is solved on the geometric model first, by damped Gauss-Newton inside the bending limits, and the same feedback laws track the path to that solution.</p>
+    <p class="control"><b>Flip the Planner switch</b> under the views. <span class="hint">Each flip re-runs the same target from the same rest pose. <button data-run="hook">Run the target again</button></span></p>
     <div class="scene" data-scene="a3"></div>
-    <p class="control"><b>Flip the Planner switch</b> in the toolbar. <span class="hint">Each flip re-runs the same target from the same rest pose. <button data-run="hook">Run the target again</button></span></p>
     <div class="panel">
       <div class="panel-title">Edge targets settled out of <!--EVAL_TRIALS-->, direct against planned</div>
-      <div class="panel-sub">From the evaluation run (<!--EVAL_DATE-->): four disturbance conditions, both controllers; light bars are the feedback law alone, solid bars the same law tracking a plan.</div>
-      <canvas class="cr-chart" data-chart="bars" width="944" height="240"
+      <div class="panel-sub">From the evaluation run (<!--EVAL_DATE-->): four disturbance conditions, both controllers, 40 edge targets per bar.</div>
+      <canvas class="cr-chart" data-chart="bars" width="944" height="260"
         data-c-nominal="<!--EVAL:edge,nominal,classical,0-->|<!--EVAL:edge,nominal,classical,3-->" data-l-nominal="<!--EVAL:edge,nominal,learned,0-->|<!--EVAL:edge,nominal,learned,3-->"
         data-c-payload="<!--EVAL:edge,payload,classical,0-->|<!--EVAL:edge,payload,classical,3-->" data-l-payload="<!--EVAL:edge,payload,learned,0-->|<!--EVAL:edge,payload,learned,3-->"
         data-c-drift="<!--EVAL:edge,drift,classical,0-->|<!--EVAL:edge,drift,classical,3-->" data-l-drift="<!--EVAL:edge,drift,learned,0-->|<!--EVAL:edge,drift,learned,3-->"
         data-c-both="<!--EVAL:edge,payload + drift,classical,0-->|<!--EVAL:edge,payload + drift,classical,3-->" data-l-both="<!--EVAL:edge,payload + drift,learned,0-->|<!--EVAL:edge,payload + drift,learned,3-->"></canvas>
       <ul class="lines">
-        <li><b>You see</b>for each of four conditions, how many of 40 edge targets each controller settled, with the plan off (light) and on (solid).</li>
         <li><b>Read it</b>the light bar is the feedback law alone; the solid bar is the same law tracking a plan; the gap is the plan's contribution.</li>
-        <li><b>Take away</b>the plan lifts the classical law from <!--EVAL:edge,nominal,classical,0--> to <!--EVAL:edge,nominal,classical,3--> and the learned law from <!--EVAL:edge,nominal,learned,0--> to <!--EVAL:edge,nominal,learned,3-->; under drift both keep most of that.</li>
+        <li><b>Take away</b>the plan lifts the classical law from <!--EVAL:edge,nominal,classical,0--> to <!--EVAL:edge,nominal,classical,3--> and the learned law from <!--EVAL:edge,nominal,learned,0--> to <!--EVAL:edge,nominal,learned,3-->; under payload and drift both keep most of that.</li>
       </ul>
     </div>
     <div class="verdict">
       <p class="opener">Above both laws, the plan reaches every nominal edge target; alone, neither law does.</p>
-      <p>On the target above, the direct classical law stopped <span class="num" data-v="stall">…</span> from the target in its last second; planned, it settled in <span class="num" data-v="plannedSettle">…</span>. In the evaluation run, direct, the classical law stalled <span class="num"><!--EVAL:edge,nominal,classical,2--></span> short on average and the learned law <span class="num"><!--EVAL:edge,nominal,learned,2--></span>; planned, both sit at <span class="num"><!--EVAL:edge,nominal,classical,5--></span> and <span class="num"><!--EVAL:edge,nominal,learned,5--></span>.</p>
+      <p>On the target above, direct, the classical law ended <span class="num" data-v="stall">running</span> from the target: it follows the local error gradient, bends segment one into a different plane from the one the inverse kinematics finds, and stops where that gradient vanishes, short of a target that is reachable. Planned, it settled in <span class="num" data-v="plannedSettle">running</span>. In the evaluation run, direct, the classical law stalled <span class="num"><!--EVAL:edge,nominal,classical,2--></span> short on average and the learned law <span class="num"><!--EVAL:edge,nominal,learned,2--></span>; planned, both sit at <span class="num"><!--EVAL:edge,nominal,classical,5--></span> and <span class="num"><!--EVAL:edge,nominal,learned,5--></span>.</p>
     </div>
-    <p class="handover">The learned law is the one trained thing on this page; its card follows.</p>
   </section>
 
   <h2>Model card, the one thing on this page that was trained</h2>
   <div data-modelcard></div>
-  <div class="cr-card"><dt>Scored on</dt><dd>the <!--EVAL_TRIALS-->-trial closed-loop tables below. Against the classical law: on edge targets, direct, <!--EVAL:edge,nominal,learned,2--> steady state against <!--EVAL:edge,nominal,classical,2-->; under drift on interior targets, direct, <!--EVAL:interior,drift,learned,0--> settled against <!--EVAL:interior,drift,classical,0-->.</dd>
-  <dt>Verdict</dt><dd>ahead of the classical law on edge targets and under payload, level under payload with drift, slightly behind under drift alone. The extrapolation flag fired on 0 percent of steps in every table cell, so those runs do not test it.</dd></div>
+  <template id="card-extra"><dt>Scored on</dt><dd>the <!--EVAL_TRIALS-->-trial closed-loop tables below. Against the classical law: on edge targets, direct, <!--EVAL:edge,nominal,learned,2--> steady state against <!--EVAL:edge,nominal,classical,2-->; under drift on interior targets, direct, <!--EVAL:interior,drift,learned,0--> settled against <!--EVAL:interior,drift,classical,0-->.</dd>
+  <dt>Verdict</dt><dd>ahead of the classical law on edge targets and under payload; on interior targets, level under payload with drift and slightly behind under drift alone. The extrapolation flag fired on 0 percent of steps in every table cell, so those runs do not test it. It was trained on the invented simulator only; no real data calibrates it.</dd></template>
 
   <h2>What this page gets wrong</h2>
   <ul class="failpane">
     <li>The four effects are invented: their forms are standard (a rate limit and lag, a play operator, a gravity droop, a random walk) but every coefficient was typed by the author, so the numbers describe no device.</li>
-    <li>Sag is drawn from the static map only; the dynamic effects (lag, backlash, drift) have no chart here, they show as the tendons staying coloured after the command has moved on in the Tendons view.</li>
-    <li>Direct, the learned law still settles only <!--EVAL:edge,nominal,learned,0--> of the edge targets; the plan, not the learning, is what reaches all of them.</li>
-    <li>The cameras are perfect and triangulation is exact; the sensing layer's numbers are a floor no real setup reaches.</li>
+    <li>The backlash is one play operator per tendon with one width, identified by perfect cameras in a simulator that contains exactly that model. On a real robot the loop also depends on friction along the backbone, the bend and the load, and identifying it would need measured data.</li>
+    <li>The lag is inverted by a lead filter that assumes one clean first-order lag, which is only true because the simulator was written that way; on real hardware a lead filter also amplifies sensor noise, and the rate dependence is not one time constant.</li>
+    <li>Sag, coupling and drift have no chart; they appear only in the coefficient table.</li>
+    <li>Direct, the learned law settles <!--EVAL:edge,nominal,learned,0--> edge targets; the plan, not the learning, is what reaches all of them.</li>
     <li>The plan inherits the ideal model's errors and costs about a third of a second on interior targets: median settle <!--EVAL:interior,nominal,classical,1--> direct against <!--EVAL:interior,nominal,classical,4--> planned.</li>
-    <li>An earlier version of this page said the marker chord varies by under 4 percent; layer two measures it live instead of asserting it.</li>
-    <li>Millimetres are a display convention, not a claim about any device.</li>
+    <li>An earlier version of this page said the marker chord varies by under 4 percent. The true figure is under 5 percent at flexibility x1.0, about 4.96 percent, and layer two measures it live.</li>
   </ul>
 
-  <h2>Free play</h2>
-  <p class="caption">Everything unpinned: both robots, all toggles, the charts and the trial table, as on the main page.</p>
-  <div class="scene" data-scene="a4"></div>
+  <details class="freeplay">
+    <summary>Free play: both robots and every control, unpinned</summary>
+    <div class="scene" data-scene="a4"></div>
+  </details>
+
+  <h2>References</h2>
+  <ul class="refs">
+    <li>Webster and Jones, 2010, Design and kinematic modeling of constant curvature continuum robots: the constant-curvature arc, the geometry of every segment here.</li>
+    <li>Kuhnen, 2003, Modeling, identification and compensation of complex hysteretic nonlinearities: the play operator and its inverse, used here for the backlash and its compensation.</li>
+    <li>Wu, Zhang, Ourak, Niu, Dankelman and Vander Poorten, 2021, Hysteresis modeling of robotic catheters based on long short-term memory network for improved environment reconstruction, IEEE RA-L 6(2): an LSTM against a rate-dependent Prandtl-Ishlinskii model, the kind of model a real robot's rate-dependent hysteresis calls for.</li>
+    <li>Chaumette and Hutchinson, 2006, Visual servo control: the feedback law, resolved-rate servoing on a point feature.</li>
+  </ul>
 
   <h2>How this page was built</h2>
   <div class="prose">
-    <p>The simulator, sensing, planner, both controllers, the pretrained weights and the precomputed envelope are the version 3 code, loaded unchanged. The ensemble was trained by <span class="kv">node train/train.js</span>, the evaluation tables by <span class="kv">node train/eval.js</span> (<!--EVAL_DATE-->), all with fixed seeds. Every number on this page is read from that evaluation file at build time or computed in this browser; none is typed. Version 1 is kept unchanged at <a href="../v1.html">v1.html</a>.</p>
+    <p>The simulator, sensing, planner, both controllers, the pretrained weights and the precomputed envelope are the version 3 code, loaded unchanged; the identification of the play and the lag and their inverses are one added module. The ensemble was trained by <span class="kv">node train/train.js</span>, the evaluation tables by <span class="kv">node train/eval.js</span> (<!--EVAL_DATE-->) and the closed-loop compensation check by <span class="kv">node train/hyst-eval.js</span> (<!--HYST:date-->), all with fixed seeds. Every other number on this page is computed in this browser when it loads. Version 1 is kept unchanged at <a href="../v1.html">v1.html</a>.</p>
   </div>
   <div class="panel">
     <div class="panel-title">Planner off against planner on, <!--EVAL_TRIALS--> trials per cell</div>
@@ -188,9 +201,8 @@
   </div>
 
   <footer>
-    <span>Bolgaç Gülen · September 2026 · variant 3</span>
+    <span>Bolgaç Gülen · September 2026</span>
     <span>Simulation only. No hardware, no clinical anything.</span>
-    <span data-fps></span>
   </footer>
 </div>
 <script>

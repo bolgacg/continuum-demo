@@ -1,0 +1,29 @@
+{
+  "date": "2026-09-25",
+  "trueW": 0.035,
+  "estW": 0.03518228202874526,
+  "N": 20,
+  "rows": [
+    {
+      "label": "none",
+      "settled": 20,
+      "n": 20,
+      "settleMedianS": 1.85,
+      "steadyMeanMm": 0.2384972407709315
+    },
+    {
+      "label": "estimate",
+      "settled": 20,
+      "n": 20,
+      "settleMedianS": 1.725,
+      "steadyMeanMm": 0.024729624543259117
+    },
+    {
+      "label": "twice",
+      "settled": 20,
+      "n": 20,
+      "settleMedianS": 0.9,
+      "steadyMeanMm": 0.379000714369374
+    }
+  ]
+}

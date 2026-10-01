@@ -69,13 +69,13 @@ for (const want of [
   check('markup has no Liquid braces', !m.includes('{{') && !m.includes('{%'));
 }
 
-// --- 3. the CORE list of build-variants.js equals build.js's (once it exists) ---
+// --- 3. the CORE list of build-variants.js is build.js's plus the hysteresis module ---
 {
   const bv = path.join(__dirname, '..', 'build-variants.js');
   if (fs.existsSync(bv)) {
     const a = fs.readFileSync(path.join(__dirname, '..', 'build.js'), 'utf8').match(/const CORE = \[([^\]]+)\]/)[1];
     const b = fs.readFileSync(bv, 'utf8').match(/const CORE = \[([^\]]+)\]/);
-    check('build-variants CORE list equals build.js', b && b[1].replace(/\s/g, '') === a.replace(/\s/g, ''));
+    check('build-variants CORE list is build.js plus hyst', b && b[1].replace(/\s/g, '') === a.replace(/\s/g, '') + ",'hyst'");
   }
 }
 

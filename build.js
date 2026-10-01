@@ -44,9 +44,9 @@ html = html.replace('/*__UI__*/', bundle(UI));
 
 const out = path.join(ROOT, 'demo.html');
 fs.writeFileSync(out, html);
-// index.html is the same page, so GitHub Pages serves it at the bare URL.
-fs.writeFileSync(path.join(ROOT, 'index.html'), html);
+// index.html is no longer this page: since October 2026 the main page is
+// variant 3, written by build-variants.js. This page stays at demo.html.
 const kb = (fs.statSync(out).size / 1024).toFixed(0);
-console.log('demo.html + index.html written (' + kb + ' kB, weights ' +
+console.log('demo.html written (' + kb + ' kB, weights ' +
   (weights === 'null' ? 'MISSING' : 'embedded') + ', workspace outline ' +
   (workspace === 'null' ? 'MISSING' : 'embedded') + '). v1.html is frozen and not rebuilt.');

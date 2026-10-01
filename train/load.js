@@ -1,7 +1,7 @@
 // Loads the core modules (browser-style namespace files) into Node.
 'use strict';
 const path = require('path');
-const FILES = ['math3', 'pcc', 'camera', 'truth', 'ibvs', 'features', 'mlp', 'learned', 'planner', 'workspace'];
+const FILES = ['math3', 'pcc', 'camera', 'truth', 'ibvs', 'features', 'mlp', 'learned', 'planner', 'workspace', 'hyst'];
 for (const f of FILES) {
   const p = path.join(__dirname, '..', 'src', 'core', f + '.js');
   try {
